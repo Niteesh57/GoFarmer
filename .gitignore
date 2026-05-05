@@ -72,3 +72,8 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+
+gofarmer
+stitch_gofarmer_ai_design_system
+.env

@@ -10,8 +10,20 @@
     "test": "jest"
   },
   "dependencies": {
-    "react": "18.3.1",
-    "react-native": "0.76.9"
+    "@react-native-async-storage/async-storage": "^2.1.2",
+    "@react-native-community/geolocation": "^3.4.0",
+    "cactus-react-native": "^1.13.1",
+    "i18next": "^26.0.8",
+    "intl-pluralrules": "^2.0.1",
+    "react": "19.1.0",
+    "react-i18next": "^17.0.6",
+    "react-native": "0.81.1",
+    "react-native-dotenv": "^3.4.11",
+    "react-native-image-picker": "^8.2.1",
+    "react-native-markdown-display": "^7.0.2",
+    "react-native-nitro-modules": "^0.33.9",
+    "react-native-safe-area-context": "^5.7.0",
+    "react-native-tts": "^4.1.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -20,17 +32,17 @@
     "@react-native-community/cli": "15.0.1",
     "@react-native-community/cli-platform-android": "15.0.1",
     "@react-native-community/cli-platform-ios": "15.0.1",
-    "@react-native/babel-preset": "0.76.9",
-    "@react-native/eslint-config": "0.76.9",
-    "@react-native/metro-config": "0.76.9",
-    "@react-native/typescript-config": "0.76.9",
-    "@types/react": "^18.2.6",
+    "@react-native/babel-preset": "0.81.1",
+    "@react-native/eslint-config": "0.81.1",
+    "@react-native/metro-config": "0.81.1",
+    "@react-native/typescript-config": "0.81.1",
+    "@types/react": "^19.1.0",
     "@types/react-test-renderer": "^18.0.0",
     "babel-jest": "^29.6.3",
     "eslint": "^8.19.0",
     "jest": "^29.6.3",
     "prettier": "2.8.8",
-    "react-test-renderer": "18.3.1",
+    "react-test-renderer": "19.1.0",
     "typescript": "5.0.4"
   },
   "engines": {
