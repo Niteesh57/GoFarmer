@@ -21,6 +21,7 @@ import {
   View,
   Alert,
   NativeModules,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CactusLM, type CactusLMMessage } from 'cactus-react-native';
@@ -41,8 +42,16 @@ import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const MODEL_NAME = 'gemma-4-e2b-it';
-const FALLBACK_MODEL_PATH = '/data/local/tmp/gemma-4-e2b-it';
-const CORPUS_PATH = '/data/local/tmp/gofarmer-vector';
+const FALLBACK_MODEL_PATH = Platform.select({
+  ios: 'gemma-4-e2b-it', // On iOS, the path depends on how the model is bundled or sideloaded
+  android: '/data/local/tmp/gemma-4-e2b-it',
+  default: '/data/local/tmp/gemma-4-e2b-it'
+});
+const CORPUS_PATH = Platform.select({
+  ios: 'gofarmer-vector',
+  android: '/data/local/tmp/gofarmer-vector',
+  default: '/data/local/tmp/gofarmer-vector'
+});
 const ONBOARDING_KEY = '@gofarmer_onboarding_done';
 const LANGUAGE_KEY = '@gofarmer_language';
 
@@ -138,10 +147,18 @@ function AppContent() {
         const ramGB = totalRam / (1024 * 1024 * 1024);
 
         let cores = 8;
-        const { HardwareModule } = NativeModules;
-        if (HardwareModule) {
-          const specs = await HardwareModule.getHardwareSpecs();
-          cores = specs.cpuCores;
+        if (Platform.OS === 'android') {
+          const { HardwareModule } = NativeModules;
+          if (HardwareModule) {
+            const specs = await HardwareModule.getHardwareSpecs();
+            cores = specs.cpuCores;
+          }
+        } else {
+          // iOS fallback: react-native-device-info can provide cores if needed, 
+          // but for now let's use a safe default or reasonable guess.
+          // Note: DeviceInfo doesn't expose cores directly on iOS easily without native code,
+          // but we can assume most modern iPhones have at least 6-8 cores.
+          cores = 6; 
         }
 
         // 2. Dynamic LM Configuration (No faking)
@@ -388,8 +405,9 @@ function AppContent() {
         messages,
         options: {
           temperature: 0.1,
-          maxTokens: 256, // Fast JSON generation
-          enableThinking: false, // Explicitly disable thinking
+          maxTokens: 512,
+          enableThinking: false, 
+          enableRag: true, 
         },
         onToken: callbacks.onToken,
       });

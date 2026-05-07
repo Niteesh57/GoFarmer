@@ -159,7 +159,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
       const asset = res.assets?.[0];
       if (!asset?.uri) return;
 
-      const imagePath = asset.uri.replace('file://', '');
+      const imagePath = Platform.OS === 'android' ? asset.uri.replace('file://', '') : asset.uri;
       setScanning(true);
 
       try {
