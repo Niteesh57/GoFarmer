@@ -152,7 +152,22 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
     const userMsg: CactusLMMessage = { role: 'user', content: text || 'Voice Question' };
 
     try {
-      const contentLangStr = await AsyncStorage.getItem('@content_lang') || 'English';
+      const savedLang = await AsyncStorage.getItem('@content_lang');
+      let contentLangStr = 'English';
+      if (savedLang) {
+        contentLangStr = savedLang.replace(/[^\w\s]/g, '').trim();
+      } else {
+        try {
+          if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
+            contentLangStr = new Intl.DisplayNames(['en'], { type: 'language' }).of(i18n.language) || 'English';
+          } else {
+            contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
+          }
+        } catch (e) {
+          contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
+        }
+      }
+
       const ttsCode = getLangCode(contentLangStr);
       if (selectedVoice) {
         await Tts.setDefaultVoice(selectedVoice);
@@ -160,7 +175,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
         await Tts.setDefaultLanguage(ttsCode);
       }
 
-      const systemPrompt = `${AGRI_SYSTEM_PROMPT}\nAnswer ENTIRELY in ${contentLangStr}.`;
+      const systemPrompt = `${AGRI_SYSTEM_PROMPT}\n\nSTRICT RULE: You MUST answer ENTIRELY in the following language: ${contentLangStr}.`;
 
       // Get history from active session if exists
       const history = activeSession ? activeSession.messages : [];

@@ -75,6 +75,9 @@ const resources = {
         wm2: 'W/m²',
         mm: 'mm',
         kpa: 'kPa',
+        ai_advisory: 'AI Advisory Plan',
+        generate_plan: 'Generate',
+        advisory_placeholder: 'Click generate to create a detailed 16-day plan for your crops.',
       },
       aieye: {
         title: 'AI Eye',
@@ -221,6 +224,7 @@ const resources = {
         delete: 'Delete',
         pause: 'Pause',
         cancel_download: 'Cancel',
+        knowledge_base: 'Knowledge Base',
       }
     }
   },
@@ -293,6 +297,9 @@ const resources = {
         wm2: 'W/m²',
         mm: 'मिमी',
         kpa: 'kPa',
+        ai_advisory: 'AI सलाह योजना',
+        generate_plan: 'योजना बनाएं',
+        advisory_placeholder: 'अपनी फसलों के लिए 16-दिन की विस्तृत योजना बनाने के लिए "योजना बनाएं" पर क्लिक करें।',
       },
       aieye: {
         title: 'AI आई',
@@ -439,6 +446,7 @@ const resources = {
         delete: 'हटाएं',
         pause: 'रोकें',
         cancel_download: 'रद्द करें',
+        knowledge_base: 'ज्ञान का आधार',
       }
     }
   }

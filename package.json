@@ -12,6 +12,7 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.1.2",
     "@react-native-community/geolocation": "^3.4.0",
+    "@react-native-community/netinfo": "^12.0.1",
     "cactus-react-native": "^1.13.1",
     "i18next": "^26.0.8",
     "intl-pluralrules": "^2.0.1",

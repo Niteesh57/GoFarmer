@@ -45,6 +45,8 @@ interface SettingsScreenProps {
 
 const STREAM_CHUNK_SIZE = 64000; // 2 seconds of 16 kHz mono 16-bit PCM bytes.
 const SPEECH_PEAK_THRESHOLD = 1000;
+const RAG_FILE_URL = 'https://raw.githubusercontent.com/Niteesh57/GoFarmer/main/vector/rag.txt';
+const RAG_FILE_PATH = '/data/local/tmp/gofarmer-vector/rag.txt';
 
 export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
   const { t, i18n } = useTranslation();
@@ -103,6 +105,10 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
   // TTS Voice State
   const [availableVoices, setAvailableVoices] = useState<any[]>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
+
+  // RAG State
+  const [ragStatus, setRagStatus] = useState<'not_downloaded' | 'downloaded'>('not_downloaded');
+  const [isUpdatingRag, setIsUpdatingRag] = useState(false);
 
   useEffect(() => {
     // 1. Init TTS
@@ -225,7 +231,6 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
         console.log('Failed to fetch device info:', e);
     }
   }, []);
-
   const checkModelFile = useCallback(async () => {
     // Check Gemma 4
     setModels(prev => prev.map(m => {
@@ -237,13 +242,11 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
 
     // Consistent Check for all models
     for (const model of MODELS) {
-      if (model.id === 'gemma-4-e2b-it') continue; // Already handled
+      if (model.id === 'gemma-4-e2b-it') continue; 
 
       try {
         const q = 'int4';
         const modelName = `${model.id}-${q}`;
-        
-        console.log(`Checking existence for ${model.id} as ${modelName}`);
         const exists = await CactusFileSystem.modelExists(modelName);
         
         if (exists) {
@@ -257,11 +260,40 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
     }
   }, [isModelReady]);
 
+  const checkRagFile = useCallback(async () => {
+    try {
+      const exists = await CactusFileSystem.fileExists(RAG_FILE_PATH);
+      setRagStatus(exists ? 'downloaded' : 'not_downloaded');
+    } catch (e) {
+      console.log('Failed to check RAG file:', e);
+    }
+  }, []);
+
+  const handleUpdateRag = async () => {
+    setIsUpdatingRag(true);
+    try {
+      showToast('Fetching latest knowledge base...', 'info');
+      const response = await fetch(RAG_FILE_URL);
+      if (!response.ok) throw new Error('Failed to fetch from GitHub');
+      
+      const text = await response.text();
+      await CactusFileSystem.writeFile(RAG_FILE_PATH, text);
+      
+      setRagStatus('downloaded');
+      showToast('Knowledge base updated!', 'success');
+    } catch (e: any) {
+      showToast(`Update failed: ${e.message}`, 'error');
+    } finally {
+      setIsUpdatingRag(false);
+    }
+  };
+
   useEffect(() => {
     getInsights(false).catch(err => console.log('Auto-update insights failed:', err));
     calculateStorage();
     checkModelFile();
-  }, [calculateStorage, checkModelFile]);
+    checkRagFile();
+  }, [calculateStorage, checkModelFile, checkRagFile]);
 
   const handleOpenStorageSettings = () => {
     if (Platform.OS === 'android') {
@@ -661,6 +693,42 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
           </View>
         </View>
         */}
+
+        {/* Knowledge Base (RAG) */}
+        <View style={styles.sectionCard}>
+          <Text style={[styles.sectionHeader, { color: Colors.onSurface }]}>📚 {t('settings.knowledge_base', { defaultValue: 'Knowledge Base' })}</Text>
+          <View style={[styles.modelCard, { backgroundColor: Colors.surfaceContainerLow, borderColor: Colors.outlineVariant, marginTop: 8 }]}>
+            <View style={styles.modelTop}>
+              <View style={styles.modelInfo}>
+                <Text style={[styles.modelName, { color: Colors.onSurface }]}>Agricultural RAG Index</Text>
+                <Text style={[styles.modelSize, { color: Colors.onSurfaceVariant }]}>rag.txt</Text>
+              </View>
+              <View style={[styles.modelStatusBadge, {
+                backgroundColor: ragStatus === 'downloaded' ? Colors.primaryContainer + '44' : Colors.surfaceContainerHigh,
+              }]}>
+                <Text style={[styles.modelStatusText, { color: Colors.onSurface }]}>
+                  {ragStatus === 'downloaded' ? `✓ ${t('radio.downloaded')}` : `⭕ ${t('settings.not_downloaded')}`}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.modelDesc, { marginTop: 8 }]}>
+              Local knowledge base for disease diagnosis and farming advice.
+            </Text>
+            <TouchableOpacity 
+              style={[styles.outlineBtn, { marginTop: 12, borderColor: Colors.primary, backgroundColor: Colors.primaryContainer + '11' }]} 
+              onPress={handleUpdateRag}
+              disabled={isUpdatingRag}
+            >
+              {isUpdatingRag ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Text style={[styles.outlineBtnText, { color: Colors.primary, fontWeight: '700', textAlign: 'center' }]}>
+                  {ragStatus === 'downloaded' ? 'Update Knowledge Base' : 'Download Knowledge Base'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* About */}
         <View style={styles.sectionCard}>

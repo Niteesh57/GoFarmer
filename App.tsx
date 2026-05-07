@@ -373,61 +373,28 @@ function AppContent() {
     imagePath: string,
     callbacks: {
       onToken?: (tok: string) => void,
-      onThinking?: (text: string) => void,
     }
-  ): Promise<{ response: string, thinking?: string }> => {
+  ): Promise<{ response: string }> => {
     if (!modelReady) throw new Error('Model not ready');
     setIsGenerating(true);
 
     try {
-      // 1. Initial visual scan to identify symptoms
-      const symptomScanPrompt =
-        'Describe the visible symptoms on the plant in this image (color, spots, leaf distortion). ' +
-        'Keep it short - 1-2 sentences.';
-
-      const scanResult = await lm.complete({
-        messages: [{ role: 'user', content: symptomScanPrompt, images: [imagePath] }],
-        options: { temperature: 0.0, maxTokens: 60 }
-      });
-
-      const symptoms = scanResult.response.trim();
-      console.log('[RAG] Symptoms identified:', symptoms);
-
-      // 2. Query the Knowledge Base (RAG) using identified symptoms
-      let ragContext = '';
-      try {
-        const ragData = await lm.ragQuery({ query: symptoms, topK: 3 });
-        if (ragData && ragData.chunks && ragData.chunks.length > 0) {
-          ragContext = '\n\nRELEVANT KNOWLEDGE BASE RECORDS:\n' +
-            ragData.chunks.map(c => `[From ${c.source}]: ${c.content}`).join('\n---\n');
-          console.log('[RAG] Context retrieved successfully');
-        }
-      } catch (ragErr) {
-        console.warn('[RAG] Query failed, proceeding with direct AI knowledge', ragErr);
-      }
-
-      // 3. Final Diagnostic Report with RAG Context
-      const finalPrompt = `${prompt}${ragContext}\n\nFINAL DIAGNOSIS:`;
       const messages: CactusLMMessage[] = [
         { role: 'system', content: SYSTEM_PROMPT_VISION },
-        { role: 'user', content: finalPrompt, images: [imagePath] },
+        { role: 'user', content: prompt, images: [imagePath] },
       ];
 
       const result = await lm.complete({
         messages,
         options: {
-          temperature: 0.0,
-          topK: 1,
-          maxTokens: 512,
-          enableThinking: false,
-          confidenceThreshold: 0.8,
+          temperature: 0.1,
+          maxTokens: 256, // Fast JSON generation
+          enableThinking: false, // Explicitly disable thinking
         },
-        onToken: tok => {
-          if (callbacks.onToken) callbacks.onToken(tok);
-        },
+        onToken: callbacks.onToken,
       });
 
-      return { response: result.response, thinking: symptoms }; // Use symptom scan as 'thinking'
+      return { response: result.response }; 
     } finally {
       setIsGenerating(false);
     }

@@ -73,7 +73,9 @@ export const fetchInsightsFromApi = async () => {
     
     const today = new Date();
     const endDate = new Date();
-    endDate.setDate(today.getDate() + 30);
+    endDate.setDate(today.getDate() + 15);
+
+    const formatDate = (date: Date) => date.toISOString().split('T')[0];
 
     const payload = {
       coordinates: [
@@ -82,8 +84,8 @@ export const fetchInsightsFromApi = async () => {
           longitude: coords.longitude,
         }
       ],
-      start_date: "today",
-      end_date: "today + 30 days",
+      start_date: formatDate(today),
+      end_date: formatDate(endDate),
       temperature_unit: "celsius"
     };
 

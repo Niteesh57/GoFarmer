@@ -33,6 +33,7 @@ const getWeatherText = (code: number, t: any) => {
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CROPS_KEY = '@user_crops';
 const HISTORY_KEY = '@advisor_history_v2';
+const ADVISORY_KEY = '@weather_advisory_v1';
 const DEFAULT_CROPS: string[] = [];
 
 interface WeatherScreenProps {
@@ -56,6 +57,11 @@ export default function WeatherScreen({ llmComplete, isLlmReady }: WeatherScreen
   const [isAdvising, setIsAdvising] = useState(false);
   const [advisorHistory, setAdvisorHistory] = useState<any[]>([]);
   const [advisorResult, setAdvisorResult] = useState<string | null>(null);
+  
+  // Weekly/Long-term Advisory state
+  const [advisoryPlan, setAdvisoryPlan] = useState<string | null>(null);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  
   const scrollViewRef = useRef<ScrollView>(null);
 
   const loadData = async (forceUpdate = false) => {
@@ -80,6 +86,7 @@ export default function WeatherScreen({ llmComplete, isLlmReady }: WeatherScreen
     loadData();
     loadCrops();
     loadHistory();
+    loadAdvisory();
   }, []);
 
   const loadCrops = async () => {
@@ -106,10 +113,74 @@ export default function WeatherScreen({ llmComplete, isLlmReady }: WeatherScreen
       if (history) setAdvisorHistory(JSON.parse(history));
     } catch (e) {}
   };
+  
+  const loadAdvisory = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(ADVISORY_KEY);
+      if (saved) setAdvisoryPlan(saved);
+    } catch (e) {}
+  };
 
-  const getNext30Days = () => {
+  const getNext16Days = () => {
     if (!weatherData?.timeseries?.daily?.dates) return [];
-    return weatherData.timeseries.daily.dates.slice(0, 30);
+    return weatherData.timeseries.daily.dates.slice(0, 16);
+  };
+
+  const handleGenerateAdvisory = async () => {
+    if (!llmComplete || !isLlmReady || !weatherData) return;
+    
+    setIsGeneratingPlan(true);
+    setAdvisoryPlan(''); // Clear previous
+    Tts.stop();
+
+    try {
+      const timeseries = weatherData?.timeseries?.daily || {};
+      const weatherSummary = timeseries.dates?.slice(0, 16).map((d: string, i: number) => 
+        `${d}: Max ${timeseries.temp_max[i]}°C, Rain ${timeseries.rainfall[i]}mm`
+      ).join('; ');
+
+      const savedLang = await AsyncStorage.getItem('@content_lang');
+      
+      // Safe resolution of language name
+      let contentLangStr = 'English';
+      if (savedLang) {
+        contentLangStr = savedLang.replace(/[^\w\s]/g, '').trim();
+      } else {
+        try {
+          if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
+            contentLangStr = new Intl.DisplayNames(['en'], { type: 'language' }).of(i18n.language) || 'English';
+          } else {
+            contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
+          }
+        } catch (e) {
+          contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
+        }
+      }
+      
+      const prompt = `You are a professional agronomist. The user has a ${activeCrop || 'general'} farm. 
+Here is the 16-day weather forecast: ${weatherSummary}.
+
+Create a detailed, day-by-day agricultural advisory plan for the next 16 days.
+Include:
+1. Specific dates when specific farm actions (planting, harvesting, weeding) are ideal.
+2. CRITICAL WARNINGS: Identify dates with high rain risk where spraying pesticides or irrigation should be AVOIDED.
+3. Safeguarding tips: How to protect the ${activeCrop || 'crops'} based on the specific temperature and rain trends.
+4. Keep the tone helpful and professional.
+
+Respond ENTIRELY in ${contentLangStr}. Use Markdown for formatting.`;
+
+      let fullResponse = '';
+      const response = await llmComplete(prompt, (token) => {
+        setAdvisoryPlan(prev => (prev || '') + token);
+        fullResponse += token;
+      });
+      
+      await AsyncStorage.setItem(ADVISORY_KEY, fullResponse);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsGeneratingPlan(false);
+    }
   };
 
   const handleAskAdvisor = async () => {
@@ -127,23 +198,34 @@ export default function WeatherScreen({ llmComplete, isLlmReady }: WeatherScreen
     }
 
     setIsAdvising(true);
-
-    // Stop any ongoing speech
     Tts.stop();
 
     try {
       const timeseries = weatherData?.timeseries?.daily || {};
-      // Compress the data to avoid token limits
-      const weatherSummary = timeseries.dates?.slice(0, 30).map((d: string, i: number) => 
+      const weatherSummary = timeseries.dates?.slice(0, 16).map((d: string, i: number) => 
         `${d}: Max ${timeseries.temp_max[i]}°C, Rain ${timeseries.rainfall[i]}mm`
       ).join('; ');
 
-      const contentLangStr = await AsyncStorage.getItem('@content_lang') || 'English';
+      const savedLang = await AsyncStorage.getItem('@content_lang');
+      let contentLangStr = 'English';
+      if (savedLang) {
+        contentLangStr = savedLang.replace(/[^\w\s]/g, '').trim();
+      } else {
+        try {
+          if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
+            contentLangStr = new Intl.DisplayNames(['en'], { type: 'language' }).of(i18n.language) || 'English';
+          } else {
+            contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
+          }
+        } catch (e) {
+          contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
+        }
+      }
       const ttsCode = getLangCode(contentLangStr);
       await Tts.setDefaultLanguage(ttsCode);
 
       const prompt = `You are an expert technical farmer adviser. The user wants to plant ${searchCrop} on ${selectedDate}. 
-Here is the daily weather data for the region over the next 30 days:
+Here is the daily weather data for the region over the next 16 days:
 ${weatherSummary}
 
 Is this crop suitable for this weather and region? If not, suggest a suitable plant which suits the situation.
@@ -156,38 +238,34 @@ CRITICAL RULES:
 
       const response = await llmComplete(prompt, (token) => {
         setAdvisorResult(prev => (prev || '') + token);
-        
         ttsBuffer += token;
-        // Flush buffer to TTS on sentence boundaries (., ?, !, \n) or if it's getting too long without punctuation
         if (/[.,!?\n]/.test(token) || ttsBuffer.length > 60) {
           const chunkToSpeak = ttsBuffer.trim();
           if (chunkToSpeak.length > 1) {
-            if (isFirstChunk) {
-              // Flush out the first chunk as fast as possible
-              Tts.speak(chunkToSpeak);
-              isFirstChunk = false;
-            } else {
-              Tts.speak(chunkToSpeak);
-            }
+            Tts.speak(chunkToSpeak);
           }
-          ttsBuffer = ''; // reset buffer
+          ttsBuffer = '';
         }
       });
       
-      // Flush any remaining text in the buffer
-      if (ttsBuffer.trim().length > 1) {
-        Tts.speak(ttsBuffer.trim());
-      }
+      if (ttsBuffer.trim().length > 1) Tts.speak(ttsBuffer.trim());
       
-      await AsyncStorage.setItem('@advisor_history', response);
+      const newHistoryItem = {
+        id: Date.now().toString(),
+        crop: searchCrop,
+        date: selectedDate,
+        result: response
+      };
+      const updatedHistory = [newHistoryItem, ...advisorHistory].slice(0, 10);
+      setAdvisorHistory(updatedHistory);
+      await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
 
-      // Scroll to bottom to see result
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 500);
 
-    } catch (err: any) {
-      // Just log or show alert if needed
+    } catch (err) {
+      console.error(err);
     } finally {
       setIsAdvising(false);
     }
@@ -264,8 +342,8 @@ CRITICAL RULES:
     };
   }) || [];
 
-  // Build dynamic temp trend (30 days)
-  const dynamicTempTrend = dates.slice(0, 30).map((dateStr: string, idx: number) => {
+  // Build dynamic temp trend (16 days)
+  const dynamicTempTrend = dates.slice(0, 16).map((dateStr: string, idx: number) => {
     const high = timeseries.temp_max[idx] || 0;
     const low = timeseries.temp_min[idx] || 0;
     const minRange = 10;
@@ -375,6 +453,38 @@ CRITICAL RULES:
             ))}
           </ScrollView>
         )}
+
+        {/* AI Advisory Plan Card (New) */}
+        <View style={styles.advisoryActionCard}>
+          <View style={styles.advisoryHeader}>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: Spacing.sm}}>
+              <Text style={styles.advisoryTitle}>{t('weather.ai_advisory')}</Text>
+            </View>
+            <TouchableOpacity 
+              style={[styles.advisoryBtn, (!isLlmReady || isGeneratingPlan) && {opacity: 0.5}]} 
+              onPress={handleGenerateAdvisory}
+              disabled={!isLlmReady || isGeneratingPlan}
+            >
+              {isGeneratingPlan ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Text style={styles.advisoryBtnText}>{t('weather.generate_plan')}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+          
+          {advisoryPlan ? (
+            <View style={styles.advisoryContent}>
+              <Markdown style={markdownStyles}>
+                {advisoryPlan}
+              </Markdown>
+            </View>
+          ) : (
+            <Text style={styles.advisoryPlaceholder}>
+              {t('weather.advisory_placeholder')}
+            </Text>
+          )}
+        </View>
 
         {/* Main weather card */}
         <View style={styles.mainCard}>
@@ -539,10 +649,10 @@ CRITICAL RULES:
           </View>
         </View>
 
-        {/* 30-day temp trend (visual placeholder) */}
+        {/* 16-day temp trend */}
         <View style={styles.chartCard}>
           <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>{t('weather.temp_trend')}</Text>
+            <Text style={styles.chartTitle}>{t('weather.temp_trend', {defaultValue: '16-Day Temp Trend'})}</Text>
             <Text style={{ fontSize: 16 }}>📉</Text>
           </View>
           <View style={styles.trendChart}>
@@ -594,7 +704,7 @@ CRITICAL RULES:
 
           <Text style={styles.subLabel}>Select Planting Date:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dateScroll}>
-            {getNext30Days().map((d: string) => (
+            {getNext16Days().map((d: string) => (
               <TouchableOpacity
                 key={d}
                 style={[styles.dateChip, selectedDate === d && styles.dateChipActive]}
@@ -798,6 +908,40 @@ const styles = StyleSheet.create({
   chartSubtitle: { ...Typography.labelSm, color: Colors.onSurfaceVariant },
 
   barsContainer: { flexDirection: 'row', alignItems: 'flex-end', height: 140, gap: 8, paddingTop: 20 },
+  
+  // Advisory Plan Styles
+  advisoryActionCard: {
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '33',
+    elevation: 2, shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.1, shadowRadius: 4,
+  },
+  advisoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  advisoryTitle: { ...Typography.titleMd, color: Colors.onSurface, fontWeight: '700' },
+  advisoryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  advisoryBtnText: { ...Typography.labelLg, color: Colors.primary, fontWeight: '700' },
+  advisoryContent: {
+    marginTop: Spacing.sm,
+    padding: Spacing.sm,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Radius.md,
+  },
+  advisoryPlaceholder: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, textAlign: 'center', marginVertical: Spacing.md },
+
   barCol: { flex: 1, alignItems: 'center' },
   barValueText: { ...Typography.labelSmall, color: Colors.onSurfaceVariant, marginBottom: 4, fontSize: 10 },
   barTrack: {
