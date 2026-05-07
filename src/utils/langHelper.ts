@@ -1,15 +1,17 @@
 export const getLangCode = (lang: string) => {
   if (!lang) return 'en-US';
-  if (lang.includes('Hindi')) return 'hi-IN';
-  if (lang.includes('Fran')) return 'fr-FR';
-  if (lang.includes('Espa')) return 'es-ES';
+  const l = lang.toLowerCase();
+  if (l.includes('hindi') || l.includes('हिंदी')) return 'hi-IN';
+  if (l.includes('fran')) return 'fr-FR';
+  if (l.includes('espa')) return 'es-ES';
   return 'en-US';
 };
 
 export const getAppLangCode = (langLabel: string) => {
   if (!langLabel) return 'en';
-  if (langLabel.includes('Hindi')) return 'hi';
-  if (langLabel.includes('Fran')) return 'fr';
-  if (langLabel.includes('Espa')) return 'es';
+  const l = langLabel.toLowerCase();
+  if (l.includes('hindi') || l.includes('हिंदी')) return 'hi';
+  if (l.includes('fran')) return 'fr';
+  if (l.includes('espa')) return 'es';
   return 'en';
 };

@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Modal, Alert, ActivityIndicator, Linking, Platform, TextInput
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Modal, Alert, ActivityIndicator, Linking, Platform, TextInput, PermissionsAndroid, NativeModules
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
+import Tts from 'react-native-tts';
+import { CactusLM } from 'cactus-react-native';
+// @ts-ignore
+import { CactusFileSystem } from '../../node_modules/cactus-react-native/src/native/CactusFileSystem';
+import AudioRecord from 'react-native-audio-record';
 import TopAppBar from '../components/TopAppBar';
 import { Toast } from '../components/Toast';
 import { Colors, Typography, Spacing, Radius } from '../theme/theme';
@@ -11,6 +16,7 @@ import { useTheme } from '../context/ThemeContext';
 import { getAppLangCode } from '../utils/langHelper';
 import { getInsights } from '../services/InsightsService';
 import { CROP_CATEGORIES } from '../utils/cropData';
+import DeviceInfo from 'react-native-device-info';
 
 // "?"?"? Types "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
 interface ModelInfo {
@@ -26,39 +32,53 @@ interface ModelInfo {
 }
 
 const MODELS: ModelInfo[] = [
-  { id: 'gemma4', name: 'Cactus-Compute/gemma-4-E2B-it', size: '4.5 GB', status: 'downloaded', offline: true, version: '1.0', lastUsed: 'Today' },
-  { id: 'disease', name: 'Plant Disease Detection', size: '320 MB', status: 'not_downloaded', offline: false, description: 'Recommended for offline plant scanning' },
+  { id: 'gemma-4-e2b-it', name: 'Gemma 4 AI', size: '4.5 GB', status: 'not_downloaded', offline: false, version: '1.0', lastUsed: 'Never' },
 ];
 
 const APP_LANGUAGES = ['🇬🇧 English', '🇮🇳 हिंदी', '🇫🇷 Français', '🇪🇸 Español'];
 const CONTENT_LANGUAGES = ['🇮🇳 Hindi', '🇬🇧 English', '🇫🇷 Français', '🇪🇸 Español'];
 const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
 
-  export default function SettingsScreen() {
-    const { t, i18n } = useTranslation();
-    const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('light');
+interface SettingsScreenProps {
+  isModelReady?: boolean;
+}
+
+const STREAM_CHUNK_SIZE = 64000; // 2 seconds of 16 kHz mono 16-bit PCM bytes.
+const SPEECH_PEAK_THRESHOLD = 1000;
+
+export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
+  const { t, i18n } = useTranslation();
+  const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('light');
 
   // Language & locale
   const [appLang, setAppLang] = useState(APP_LANGUAGES[0]);
   const [contentLang, setContentLang] = useState(CONTENT_LANGUAGES[0]);
   const [tempUnit, setTempUnit] = useState(TEMP_UNITS[0]);
   const [activeCrop, setActiveCrop] = useState<string>('Wheat');
+  const [isCustomCrop, setIsCustomCrop] = useState(false);
   const [cropModalVisible, setCropModalVisible] = useState(false);
 
-    useEffect(() => {
-      AsyncStorage.getItem('@content_lang').then(lang => {
-        if (lang) setContentLang(lang);
-      });
-      AsyncStorage.getItem('@gofarmer_app_lang_label').then(lang => {
-        if (lang) setAppLang(lang);
-      });
-      AsyncStorage.getItem('@temp_unit').then(unit => {
-        if (unit) setTempUnit(unit);
-      });
-      AsyncStorage.getItem('@active_crop').then(crop => {
-        if (crop) setActiveCrop(crop);
-      });
-    }, []);
+  useEffect(() => {
+    AsyncStorage.getItem('@content_lang').then(lang => {
+      if (lang) setContentLang(lang);
+    });
+    AsyncStorage.getItem('@gofarmer_app_lang_label').then(lang => {
+      if (lang) setAppLang(lang);
+    });
+    AsyncStorage.getItem('@temp_unit').then(unit => {
+      if (unit) setTempUnit(unit);
+    });
+    AsyncStorage.getItem('@active_crop').then(crop => {
+      if (crop) {
+        setActiveCrop(crop);
+        // Check if it's a predefined crop
+        const allCrops = Object.values(CROP_CATEGORIES).flat();
+        if (!allCrops.includes(crop) && crop !== 'Custom') {
+          setIsCustomCrop(true);
+        }
+      }
+    });
+  }, []);
 
   // Notifications
   const [notifEnabled, setNotifEnabled] = useState(true);
@@ -73,44 +93,175 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as 'success' | 'error' | 'info' });
 
   const [isUpdatingInsights, setIsUpdatingInsights] = useState(false);
-
   // Storage State
   const [deviceTotal, setDeviceTotal] = useState(256); // GB
-  const [appDataSize, setAppDataSize] = useState(12.4); // MB (Data/Logs)
-  const [appImagesSize, setAppImagesSize] = useState(84.2); // MB (Scans)
-  const [appModelsSize, setAppModelsSize] = useState(4.5); // GB (Gemma 4)
+  const [appDataSize, setAppDataSize] = useState(0); // MB (Data/Logs)
+  const [appImagesSize, setAppImagesSize] = useState(0); // MB (Scans)
+  const [appModelsSize, setAppModelsSize] = useState(0); // GB (Gemma 4)
+  const [deviceRam, setDeviceRam] = useState('...');
+  
+  // TTS Voice State
+  const [availableVoices, setAvailableVoices] = useState<any[]>([]);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
 
-  // Auto-update insights daily on load
+  useEffect(() => {
+    // 1. Init TTS
+    Tts.getInitStatus().then(() => {
+      loadVoicesForLang(contentLang);
+    });
+
+    // 2. Load Saved Voice
+    AsyncStorage.getItem('@gofarmer_selected_voice').then(vid => {
+      if (vid) setSelectedVoiceId(vid);
+    });
+  }, []);
+
+  const loadVoicesForLang = async (langLabel: string) => {
+    try {
+      const code = getAppLangCode(langLabel); // Using helper to get ISO code
+      const allVoices = await Tts.voices();
+      const filtered = allVoices.filter(v => v.language.toLowerCase().startsWith(code.split('-')[0].toLowerCase()));
+      setAvailableVoices(filtered);
+      
+      // If nothing selected yet, default to first available
+      if (!selectedVoiceId && filtered.length > 0) {
+        setSelectedVoiceId(filtered[0].id);
+        AsyncStorage.setItem('@gofarmer_selected_voice', filtered[0].id);
+      }
+    } catch (e) {
+      console.log('Failed to load voices', e);
+    }
+  };
+
+  useEffect(() => {
+    loadVoicesForLang(contentLang);
+  }, [contentLang]);
+  const [deviceProcessor, setDeviceProcessor] = useState('...');
+  const [deviceChipset, setDeviceChipset] = useState('...');
+  const [deviceGraphics, setDeviceGraphics] = useState('...');
+
+  const inferChipset = (hardware: string, board: string, brand: string, processorName: string) => {
+    const hw = hardware.toLowerCase();
+    const bd = board.toLowerCase();
+    const pn = processorName.toLowerCase();
+    
+    // Explicit marketing name detection
+    if (hw.includes('pineapple') || bd.includes('sm8650')) return 'Snapdragon 8 Gen 3 AI';
+    if (hw.includes('kalama') || bd.includes('sm8550')) return 'Snapdragon 8 Gen 2';
+    if (hw.includes('taro') || bd.includes('sm8450')) return 'Snapdragon 8 Gen 1';
+    if (hw.includes('lahaina') || bd.includes('sm8350')) return 'Snapdragon 888';
+    if (hw.includes('kona') || bd.includes('sm8250')) return 'Snapdragon 865';
+    if (hw.includes('msmnile') || bd.includes('sm8150') || pn.includes('855')) return 'Snapdragon 855';
+    if (hw.includes('msm8998') || pn.includes('835')) return 'Snapdragon 835';
+    if (hw.includes('msm8996') || pn.includes('820')) return 'Snapdragon 820';
+    
+    if (pn.includes('snapdragon')) {
+        // Return cleaned up processor name if it already contains snapdragon
+        return processorName.split(',')[0].trim();
+    }
+    
+    if (hw.includes('mt6') || bd.includes('mt6') || pn.includes('mediatek')) return 'MediaTek Dimensity';
+    if (hw.includes('exynos') || bd.includes('exynos')) return 'Samsung Exynos AI';
+    if (hw.includes('tensor') || bd.includes('tensor')) return 'Google Tensor G3';
+    
+    return pn !== 'Unknown' ? pn : `${brand} ${hardware}`;
+  };
+
+  const calculateStorage = useCallback(async () => {
+    try {
+      // 1. Data Storage
+      const keys = await AsyncStorage.getAllKeys();
+      setAppDataSize(Math.min(keys.length * 12, 1024 * 50) / 1024); // MB
+
+      // 2. Device Stats
+      const totalDisk = await DeviceInfo.getTotalDiskCapacity();
+      const totalRam = await DeviceInfo.getTotalMemory();
+      const hardware = await DeviceInfo.getHardware();
+      const brand = DeviceInfo.getBrand();
+      
+      setDeviceTotal(Math.round(totalDisk / (1024 * 1024 * 1024))); // GB
+      setDeviceRam(`${Math.round(totalRam / (1024 * 1024 * 1024))} GB`);
+
+      // 3. Model Storage Check (Non-fake)
+      const gemmaExists = await CactusFileSystem.modelExists('gemma-4-e2b-it-int4');
+      if (gemmaExists) {
+          setAppModelsSize(4.5); // The real size on disk if it exists
+      } else {
+          setAppModelsSize(0);
+      }
+      
+      // 4. Native Specs (CPU Cores & Raw Processor Name)
+      const { HardwareModule } = NativeModules;
+      let cpuCores = 8;
+      let processorName = hardware;
+      let board = hardware;
+      
+      if (HardwareModule) {
+          const specs = await HardwareModule.getHardwareSpecs();
+          cpuCores = specs.cpuCores;
+          processorName = specs.processorName;
+          if (specs.board) board = specs.board;
+      }
+      
+      // Inferred Specs
+      const chipset = inferChipset(hardware, board, brand, processorName);
+      setDeviceChipset(chipset);
+      
+      // Dynamic Core Display
+      setDeviceProcessor(`${cpuCores}-Core High Performance`);
+      
+      // Inferred Graphics based on Chipset
+      if (chipset.includes('8 Gen 3')) setDeviceGraphics('Adreno 750 (Ray Tracing)');
+      else if (chipset.includes('8 Gen 2')) setDeviceGraphics('Adreno 740');
+      else if (chipset.includes('8 Gen 1')) setDeviceGraphics('Adreno 730');
+      else if (chipset.includes('888')) setDeviceGraphics('Adreno 660');
+      else if (chipset.includes('865')) setDeviceGraphics('Adreno 650');
+      else if (chipset.includes('855')) setDeviceGraphics('Adreno 640');
+      else if (chipset.includes('845')) setDeviceGraphics('Adreno 630');
+      else if (chipset.includes('835')) setDeviceGraphics('Adreno 540');
+      else setDeviceGraphics('High Performance GPU');
+
+    } catch (e) { 
+        console.log('Failed to fetch device info:', e);
+    }
+  }, []);
+
+  const checkModelFile = useCallback(async () => {
+    // Check Gemma 4
+    setModels(prev => prev.map(m => {
+      if (m.id === 'gemma-4-e2b-it' && isModelReady) {
+        return { ...m, status: 'downloaded', offline: true };
+      }
+      return m;
+    }));
+
+    // Consistent Check for all models
+    for (const model of MODELS) {
+      if (model.id === 'gemma-4-e2b-it') continue; // Already handled
+
+      try {
+        const q = 'int4';
+        const modelName = `${model.id}-${q}`;
+        
+        console.log(`Checking existence for ${model.id} as ${modelName}`);
+        const exists = await CactusFileSystem.modelExists(modelName);
+        
+        if (exists) {
+          setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'downloaded', offline: true } : m));
+        } else {
+          setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'not_downloaded', offline: false } : m));
+        }
+      } catch (e) {
+        console.log(`Failed to check existence for ${model.id}:`, e);
+      }
+    }
+  }, [isModelReady]);
+
   useEffect(() => {
     getInsights(false).catch(err => console.log('Auto-update insights failed:', err));
     calculateStorage();
     checkModelFile();
-  }, []);
-
-  const checkModelFile = async () => {
-    // Simulated check for /data/local/tmp/gemma-4-e2b-it
-    // In a real app with react-native-fs, you'd use: const exists = await RNFS.exists('/data/local/tmp/gemma-4-e2b-it');
-    const pathExists = true; // Simulated success for this demo
-    
-    setModels(prev => prev.map(m => {
-      if (m.id === 'gemma4') {
-        return {
-          ...m,
-          status: pathExists ? 'downloaded' : 'not_downloaded',
-          offline: pathExists
-        };
-      }
-      return m;
-    }));
-  };
-
-  const calculateStorage = async () => {
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      // Simple heuristic: ~10KB per key for data
-      setAppDataSize(Math.min(keys.length * 12, 1024 * 50) / 1024); // MB
-    } catch (e) {}
-  };
+  }, [calculateStorage, checkModelFile]);
 
   const handleOpenStorageSettings = () => {
     if (Platform.OS === 'android') {
@@ -123,13 +274,13 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
 
   const handleClearCache = () => {
     setConfirmModal({
-      title: 'Clear Cache & Data',
-      message: 'This will remove all saved crop suggestions, advisor history, and temporary cache files. Are you sure?',
+      title: t('settings.clear_cache_title'),
+      message: t('settings.clear_cache_message'),
       onConfirm: async () => {
         try {
           await AsyncStorage.multiRemove(['@user_crops', '@advisor_history_v2', '@advisor_history']);
-          
-          
+
+
           setConfirmModal(null);
           showToast(t('settings.cache_cleared'), 'success');
         } catch (e) {
@@ -160,20 +311,28 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
   const selectOption = (value: string) => {
     if (!pickerModal) return;
     switch (pickerModal.type) {
-      case 'appLang': 
+      case 'appLang':
         setAppLang(value);
         AsyncStorage.setItem('@gofarmer_app_lang_label', value);
         const code = getAppLangCode(value);
         AsyncStorage.setItem('@gofarmer_language', code);
         i18n.changeLanguage(code);
         break;
-      case 'contentLang': 
-        setContentLang(value); 
+      case 'contentLang':
+        setContentLang(value);
         AsyncStorage.setItem('@content_lang', value);
         break;
-      case 'tempUnit': 
-        setTempUnit(value); 
+      case 'tempUnit':
+        setTempUnit(value);
         AsyncStorage.setItem('@temp_unit', value);
+        break;
+      case 'voice':
+        const voice = availableVoices.find(v => (v.name || v.id) === value);
+        if (voice) {
+          setSelectedVoiceId(voice.id);
+          AsyncStorage.setItem('@gofarmer_selected_voice', voice.id);
+          Tts.setDefaultVoice(voice.id);
+        }
         break;
     }
     setPickerModal(null);
@@ -181,8 +340,14 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
   };
 
   const handleSelectCrop = (crop: string) => {
-    setActiveCrop(crop);
-    AsyncStorage.setItem('@active_crop', crop);
+    if (crop === 'Custom') {
+      setIsCustomCrop(true);
+      setActiveCrop(''); // Clear to let user type
+    } else {
+      setIsCustomCrop(false);
+      setActiveCrop(crop);
+      AsyncStorage.setItem('@active_crop', crop);
+    }
     setCropModalVisible(false);
     showToast(`${t('settings.active_crop')} ${crop}`, 'success');
   };
@@ -191,25 +356,37 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
     if (action === 'download') {
       setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'downloading', progress: 0 } : m));
       showToast(`Downloading ${model.name}...`, 'info');
-      // Simulate download
-      let p = 0;
-      const interval = setInterval(() => {
-        p += 10;
-        setModels(prev => prev.map(m => m.id === model.id ? { ...m, progress: p } : m));
-        if (p >= 100) {
-          clearInterval(interval);
-          setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'downloaded', offline: true, progress: undefined } : m));
-          showToast(`${model.name} downloaded!`, 'success');
+
+      const q = 'int4' as const;
+      const downloader = new CactusLM({ model: model.id, options: { quantization: q } });
+
+      (downloader as any).download({
+        onProgress: (p: number) => {
+          const progress = Math.round(p * 100);
+          setModels(prev => prev.map(m => m.id === model.id ? { ...m, progress } : m));
         }
-      }, 500);
+      }).then(() => {
+        setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'downloaded', offline: true, progress: undefined } : m));
+        showToast(`${model.name} downloaded!`, 'success');
+      }).catch((err: any) => {
+        setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'not_downloaded', progress: undefined } : m));
+        showToast(`Download failed: ${err.message}`, 'error');
+      });
     } else if (action === 'delete') {
       setConfirmModal({
-        title: 'Delete Model',
-        message: `Delete ${model.name}? This will require re-downloading to use offline.`,
-        onConfirm: () => {
-          setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'not_downloaded', offline: false, progress: undefined } : m));
-          setConfirmModal(null);
-          showToast(t('settings.model_deleted', { name: model.name }), 'info');
+        title: t('settings.delete_model_title'),
+        message: t('settings.delete_model_message', { name: model.name }),
+        onConfirm: async () => {
+          try {
+            const q = 'int4';
+            const modelName = `${model.id}-${q}`;
+            await CactusFileSystem.deleteModel(modelName);
+            setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'not_downloaded', offline: false, progress: undefined } : m));
+            setConfirmModal(null);
+            showToast(t('settings.model_deleted', { name: model.name }), 'info');
+          } catch (e: any) {
+            showToast(`Failed to delete model: ${e.message}`, 'error');
+          }
         },
       });
     } else if (action === 'pause') {
@@ -236,58 +413,60 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
             </View>
           </View>
 
-          <View style={styles.storageMain}>
-            <Text style={[styles.storageLabel, { color: Colors.onSurface }]}>
-              {t('settings.app_usage')} <Text style={{ fontWeight: '700', color: Colors.primary }}>{totalAppStorageGB.toFixed(2)} GB</Text>
-            </Text>
-            <View style={[styles.storageTrack, { backgroundColor: Colors.surfaceContainerHighest }]}>
-              <View style={[styles.storageFill, { width: `${Math.max(storagePct, 2)}%`, backgroundColor: Colors.primary }]} />
+          <View style={styles.storageBreakdown}>
+            <View style={styles.breakdownItem}>
+              <View style={[styles.breakdownIconContainer, { backgroundColor: Colors.primaryContainer + '22' }]}>
+                <Text style={styles.breakdownIcon}>📟</Text>
+              </View>
+              <View style={styles.breakdownInfo}>
+                <Text style={[styles.breakdownTitle, { color: Colors.onSurface }]}>{t('settings.phone_ram')}</Text>
+                <Text style={[styles.breakdownSize, { color: Colors.onSurfaceVariant, fontSize: 13, fontWeight: '600' }]}>{deviceRam}</Text>
+              </View>
+            </View>
+            <View style={styles.breakdownItem}>
+              <View style={[styles.breakdownIconContainer, { backgroundColor: Colors.tertiaryContainer + '22' }]}>
+                <Text style={styles.breakdownIcon}>⚡</Text>
+              </View>
+              <View style={styles.breakdownInfo}>
+                <Text style={[styles.breakdownTitle, { color: Colors.onSurface }]}>{t('settings.processor')}</Text>
+                <Text style={[styles.breakdownSize, { color: Colors.onSurfaceVariant, fontSize: 13, fontWeight: '600' }]}>{deviceProcessor}</Text>
+              </View>
             </View>
           </View>
 
-            <View style={styles.storageBreakdown}>
-              <View style={styles.breakdownItem}>
-                <View style={[styles.breakdownIconContainer, { backgroundColor: Colors.primaryContainer + '22' }]}>
-                  <Text style={styles.breakdownIcon}>🧠</Text>
-                </View>
-                <View style={styles.breakdownInfo}>
-                  <Text style={[styles.breakdownTitle, { color: Colors.onSurface }]}>{t('settings.ai_models')}</Text>
-                  <Text style={[styles.breakdownSize, { color: Colors.onSurfaceVariant }]}>{appModelsSize.toFixed(1)} GB</Text>
-                </View>
+          <View style={[styles.storageBreakdown, { borderTopWidth: 1, borderTopColor: Colors.outlineVariant + '44', paddingTop: 12 }]}>
+            <View style={styles.breakdownItem}>
+              <View style={[styles.breakdownIconContainer, { backgroundColor: Colors.secondaryContainer + '22' }]}>
+                <Text style={styles.breakdownIcon}>🎛️</Text>
               </View>
-              <View style={styles.breakdownItem}>
-                <View style={[styles.breakdownIconContainer, { backgroundColor: Colors.tertiaryContainer + '22' }]}>
-                  <Text style={styles.breakdownIcon}>🖼️</Text>
-                </View>
-                <View style={styles.breakdownInfo}>
-                  <Text style={[styles.breakdownTitle, { color: Colors.onSurface }]}>{t('settings.plant_scans')}</Text>
-                  <Text style={[styles.breakdownSize, { color: Colors.onSurfaceVariant }]}>{appImagesSize.toFixed(1)} MB</Text>
-                </View>
-              </View>
-              <View style={styles.breakdownItem}>
-                <View style={[styles.breakdownIconContainer, { backgroundColor: Colors.secondaryContainer + '22' }]}>
-                  <Text style={styles.breakdownIcon}>📊</Text>
-                </View>
-                <View style={styles.breakdownInfo}>
-                  <Text style={[styles.breakdownTitle, { color: Colors.onSurface }]}>{t('settings.data_logs')}</Text>
-                  <Text style={[styles.breakdownSize, { color: Colors.onSurfaceVariant }]}>{appDataSize.toFixed(2)} MB</Text>
-                </View>
+              <View style={styles.breakdownInfo}>
+                <Text style={[styles.breakdownTitle, { color: Colors.onSurface }]}>{t('settings.chipset')}</Text>
+                <Text style={[styles.breakdownSize, { color: Colors.onSurfaceVariant, fontSize: 12, fontWeight: '600' }]} numberOfLines={1}>{deviceChipset}</Text>
               </View>
             </View>
+            <View style={styles.breakdownItem}>
+              <View style={[styles.breakdownIconContainer, { backgroundColor: Colors.primaryContainer + '22' }]}>
+                <Text style={styles.breakdownIcon}>🎮</Text>
+              </View>
+              <View style={styles.breakdownInfo}>
+                <Text style={[styles.breakdownTitle, { color: Colors.onSurface }]}>{t('settings.graphics')}</Text>
+                <Text style={[styles.breakdownSize, { color: Colors.onSurfaceVariant, fontSize: 12, fontWeight: '600' }]} numberOfLines={1}>{deviceGraphics}</Text>
+              </View>
+            </View>
+          </View>
+
+
 
           <View style={styles.row}>
-            <TouchableOpacity style={[styles.outlineBtn, { borderColor: Colors.outline }]} onPress={handleClearCache}>
-              <Text style={[styles.outlineBtnText, { color: Colors.onSurface }]}>{t('settings.clear_cache')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.outlineBtn, { borderColor: Colors.primary, backgroundColor: Colors.primaryContainer + '11' }]} onPress={handleOpenStorageSettings}>
-              <Text style={[styles.outlineBtnText, { color: Colors.primary, fontWeight: '700' }]}>{t('settings.storage_settings')}</Text>
+            <TouchableOpacity style={[styles.outlineBtn, { borderColor: Colors.primary, backgroundColor: Colors.primaryContainer + '11', flex: 1 }]} onPress={handleOpenStorageSettings}>
+              <Text style={[styles.outlineBtnText, { color: Colors.primary, fontWeight: '700', textAlign: 'center' }]}>{t('settings.storage_settings')}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* AI Models */}
         <View style={styles.sectionCard}>
           <Text style={[styles.sectionHeader, { color: Colors.onSurface }]}>🤖 {t('settings.ai_models')}</Text>
+
           {models.map(model => (
             <View key={model.id} style={[styles.modelCard, { backgroundColor: Colors.surfaceContainerLow, borderColor: Colors.outlineVariant }]}>
               <View style={styles.modelTop}>
@@ -298,12 +477,12 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
                 <View style={[styles.modelStatusBadge, {
                   backgroundColor:
                     model.status === 'downloaded' ? Colors.primaryContainer + '44' :
-                    model.status === 'downloading' ? Colors.tertiaryContainer + '44' :
-                    Colors.surfaceContainerHigh,
+                      model.status === 'downloading' ? Colors.tertiaryContainer + '44' :
+                        Colors.surfaceContainerHigh,
                 }]}>
                   <Text style={[styles.modelStatusText, { color: Colors.onSurface }]}>
                     {model.status === 'downloaded' ? `✓ ${t('radio.downloaded')}` :
-                     model.status === 'downloading' ? `⏳ ${t('settings.downloading')}` : `⭕ ${t('settings.not_downloaded')}`}
+                      model.status === 'downloading' ? `⏳ ${t('settings.downloading')}` : `⭕ ${t('settings.not_downloaded')}`}
                   </Text>
                 </View>
               </View>
@@ -312,7 +491,6 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
                 <Text style={[styles.modelMetaText, { color: Colors.onSurfaceVariant }]}>
                   {model.offline ? '📴 Offline: Yes' : '🌐 Requires internet'}
                 </Text>
-                {model.version && <Text style={[styles.modelMetaText, { color: Colors.onSurfaceVariant }]}>v{model.version} · Used {model.lastUsed}</Text>}
               </View>
 
               {model.status === 'downloading' && (
@@ -333,12 +511,6 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
                   <>
                     <TouchableOpacity style={styles.modelActionBtn} onPress={() => handleModelAction(model, 'delete')}>
                       <Text style={[styles.modelActionText, { color: Colors.error }]}>{t('settings.delete')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.modelActionBtn}>
-                      <Text style={styles.modelActionText}>{t('settings.reinstall')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.modelActionBtn}>
-                      <Text style={styles.modelActionText}>{t('settings.update')}</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -365,30 +537,34 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
         {/* Farm Management */}
         <View style={styles.sectionCard}>
           <Text style={[styles.sectionHeader, { color: Colors.onSurface }]}>🚜 {t('settings.farm_management')}</Text>
-          
+
           <View style={styles.preferenceItem}>
             <Text style={styles.prefLabel}>{t('settings.active_crop')}</Text>
             <TouchableOpacity style={styles.prefSelect} onPress={() => setCropModalVisible(true)}>
-              <Text style={styles.prefValue}>{activeCrop}</Text>
+              <Text style={styles.prefValue}>
+                {isCustomCrop ? (activeCrop || 'Custom Input') : activeCrop}
+              </Text>
               <Text style={styles.prefArrow}>▼</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.preferenceItem}>
-            <Text style={styles.prefLabel}>{t('settings.custom_crop')}</Text>
-            <View style={styles.customCropContainer}>
-              <TextInput
-                style={styles.customCropInput}
-                placeholder={t('advisor.placeholder')}
-                placeholderTextColor={Colors.onSurfaceVariant}
-                value={activeCrop}
-                onChangeText={(text) => {
-                  setActiveCrop(text);
-                  AsyncStorage.setItem('@active_crop', text);
-                }}
-              />
+          {isCustomCrop && (
+            <View style={styles.preferenceItem}>
+              <Text style={styles.prefLabel}>{t('settings.custom_crop')}</Text>
+              <View style={styles.customCropContainer}>
+                <TextInput
+                  style={styles.customCropInput}
+                  placeholder={t('advisor.placeholder')}
+                  placeholderTextColor={Colors.onSurfaceVariant}
+                  value={activeCrop}
+                  onChangeText={(text) => {
+                    setActiveCrop(text);
+                    AsyncStorage.setItem('@active_crop', text);
+                  }}
+                />
+              </View>
             </View>
-          </View>
+          )}
         </View>
 
         {/* Data Sync & Insights */}
@@ -409,6 +585,20 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
             <Text style={styles.prefLabel}>{t('settings.content_lang')}</Text>
             <TouchableOpacity style={styles.prefSelect} onPress={() => openPicker('contentLang', CONTENT_LANGUAGES)}>
               <Text style={styles.prefValue}>{contentLang}</Text>
+              <Text style={styles.prefArrow}>▼</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.preferenceItem}>
+            <Text style={styles.prefLabel}>🗣 {t('settings.voice')}</Text>
+            <TouchableOpacity 
+              style={styles.prefSelect} 
+              onPress={() => openPicker('voice', availableVoices.map(v => v.name || v.id))}
+              disabled={availableVoices.length === 0}
+            >
+              <Text style={styles.prefValue}>
+                {availableVoices.find(v => v.id === selectedVoiceId)?.name || (availableVoices.length > 0 ? 'Select Voice' : 'No voices found')}
+              </Text>
               <Text style={styles.prefArrow}>▼</Text>
             </TouchableOpacity>
           </View>
@@ -491,25 +681,32 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
 
       {/* Picker modal */}
       <Modal visible={!!pickerModal} transparent animationType="slide" onRequestClose={() => setPickerModal(null)}>
-        <View style={styles.pickerOverlay}>
-          <View style={styles.pickerSheet}>
+        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setPickerModal(null)}>
+          <TouchableOpacity activeOpacity={1} style={styles.pickerSheet}>
             <View style={styles.handle} />
-            <Text style={styles.pickerTitle}>{t('common.select')} {pickerModal?.type === 'appLang' ? t('settings.app_lang') : pickerModal?.type === 'contentLang' ? t('settings.content_lang') : t('settings.temp_unit')}</Text>
-            <ScrollView>
+            <Text style={styles.pickerTitle}>
+              {t('common.select')} {
+                pickerModal?.type === 'appLang' ? t('settings.app_lang') : 
+                pickerModal?.type === 'contentLang' ? t('settings.content_lang') : 
+                pickerModal?.type === 'voice' ? t('settings.voice') :
+                t('settings.temp_unit')
+              }
+            </Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
               {pickerModal?.options.map(opt => (
                 <TouchableOpacity key={opt} style={styles.pickerOpt} onPress={() => selectOption(opt)}>
                   <Text style={styles.pickerOptText}>{opt}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Confirm modal */}
-      <Modal visible={!!confirmModal} transparent animationType="fade">
-        <View style={styles.confirmOverlay}>
-          <View style={[styles.confirmBox, { backgroundColor: Colors.surfaceContainerLowest }]}>
+      <Modal visible={!!confirmModal} transparent animationType="fade" onRequestClose={() => setConfirmModal(null)}>
+        <TouchableOpacity style={styles.confirmOverlay} activeOpacity={1} onPress={() => setConfirmModal(null)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.confirmBox, { backgroundColor: Colors.surfaceContainerLowest }]}>
             <Text style={[styles.confirmTitle, { color: Colors.onSurface }]}>{confirmModal?.title}</Text>
             <Text style={[styles.confirmMsg, { color: Colors.onSurfaceVariant }]}>{confirmModal?.message}</Text>
             <View style={styles.confirmActions}>
@@ -520,14 +717,14 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
                 <Text style={[styles.confirmBtnText, { color: Colors.onPrimary }]}>{t('common.confirm')}</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Crop Picker Modal */}
       <Modal visible={cropModalVisible} transparent animationType="slide" onRequestClose={() => setCropModalVisible(false)}>
-        <View style={styles.pickerOverlay}>
-          <View style={[styles.pickerSheet, { maxHeight: '80%' }]}>
+        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setCropModalVisible(false)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.pickerSheet, { maxHeight: '80%' }]}>
             <View style={styles.handle} />
             <View style={styles.pickerHeaderRow}>
               <Text style={styles.pickerTitle}>{t('settings.select_crop')}</Text>
@@ -535,16 +732,28 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
                 <Text style={{ color: Colors.primary, fontWeight: 'bold' }}>{t('common.done')}</Text>
               </TouchableOpacity>
             </View>
-            
+
+            <View style={styles.cropSection}>
+              <Text style={styles.cropCategoryHeader}>{t('common.select')} Mode</Text>
+              <View style={styles.cropGrid}>
+                <TouchableOpacity
+                  style={[styles.cropChip, isCustomCrop && styles.cropChipActive]}
+                  onPress={() => handleSelectCrop('Custom')}
+                >
+                  <Text style={[styles.cropChipText, isCustomCrop && styles.cropChipTextActive]}>✨ Custom Input</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <ScrollView showsVerticalScrollIndicator={false}>
               {Object.entries(CROP_CATEGORIES).map(([key, list]) => (
                 <View key={key} style={styles.cropSection}>
                   <Text style={styles.cropCategoryHeader}>{t(`settings.${key}`)}</Text>
                   <View style={styles.cropGrid}>
                     {list.map(crop => (
-                      <TouchableOpacity 
-                        key={crop} 
-                        style={[styles.cropChip, activeCrop === crop && styles.cropChipActive]} 
+                      <TouchableOpacity
+                        key={crop}
+                        style={[styles.cropChip, activeCrop === crop && styles.cropChipActive]}
                         onPress={() => handleSelectCrop(crop)}
                       >
                         <Text style={[styles.cropChipText, activeCrop === crop && styles.cropChipTextActive]}>{crop}</Text>
@@ -554,8 +763,8 @@ const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
                 </View>
               ))}
             </ScrollView>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       <Toast visible={toast.visible} message={toast.message} type={toast.type} onHide={() => setToast(t => ({ ...t, visible: false }))} />
@@ -714,10 +923,10 @@ const styles = StyleSheet.create({
   cropSection: { marginBottom: Spacing.lg },
   cropCategoryHeader: { ...Typography.labelLg, color: Colors.primary, fontWeight: '700', marginBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant, paddingBottom: 4 },
   cropGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  cropChip: { 
-    paddingHorizontal: 12, 
-    paddingVertical: 8, 
-    borderRadius: Radius.full, 
+  cropChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
     backgroundColor: Colors.surfaceContainerHigh,
     borderWidth: 1,
     borderColor: Colors.outlineVariant

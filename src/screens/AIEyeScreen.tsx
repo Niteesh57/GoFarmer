@@ -21,7 +21,9 @@ interface ScanResult {
   time: string;
   location: string;
   recommendations?: string[];
+  source?: 'ai' | 'vector';
 }
+
 
 const MOCK_SCANS: ScanResult[] = [
   {
@@ -54,7 +56,15 @@ const MAP_MARKERS = [
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 interface AIEyeScreenProps {
-  llmComplete: (prompt: string, imagePath: string) => Promise<string>;
+  llmComplete: (
+    prompt: string,
+    imagePath: string,
+    callbacks: {
+      onToken?: (tok: string) => void;
+      onThinking?: (text: string) => void;
+      onToolCall?: (name: string) => void;
+    }
+  ) => Promise<{ response: string; thinking?: string }>;
 }
 
 export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
@@ -64,59 +74,85 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStep, setScanStep] = useState('');
+  const [liveThinking, setLiveThinking] = useState('');
+  const [streamingResult, setStreamingResult] = useState('');
+  const [toolCalling, setToolCalling] = useState<string | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
+
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as 'success' | 'error' | 'info' });
+
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ visible: true, message, type });
   };
 
-  const handleScanPlant = useCallback(async () => {
+  const handleScanPlant = useCallback(async (source: 'camera' | 'gallery') => {
     if (Platform.OS === 'android') {
-      const perm =
-        (PermissionsAndroid.PERMISSIONS as any).READ_MEDIA_IMAGES ??
-        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
-      await PermissionsAndroid.request(perm).catch(() => {});
+      const perms = source === 'camera' 
+        ? [PermissionsAndroid.PERMISSIONS.CAMERA]
+        : [(PermissionsAndroid.PERMISSIONS as any).READ_MEDIA_IMAGES ?? PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE];
+      
+      for (const p of perms) {
+        await PermissionsAndroid.request(p).catch(() => {});
+      }
     }
 
-    launchImageLibrary({ mediaType: 'photo', quality: 0.85 }, async res => {
+    const picker = source === 'camera' ? require('react-native-image-picker').launchCamera : launchImageLibrary;
+
+    picker({ mediaType: 'photo', quality: 0.85 }, async res => {
       const asset = res.assets?.[0];
       if (!asset?.uri) return;
 
       const imagePath = asset.uri.replace('file://', '');
       setScanning(true);
       setScanProgress(0);
+      setLiveThinking('');
+      setStreamingResult('');
+      setToolCalling(null);
+
 
       const steps = [
-        { label: t('aieye.uploading'), pct: 20 },
-        { label: t('aieye.analyzing'), pct: 45 },
-        { label: t('aieye.detecting'), pct: 70 },
-        { label: t('aieye.generating'), pct: 90 },
+        { label: t('aieye.uploading'), pct: 15 },
+        { label: t('aieye.analyzing'), pct: 30 },
       ];
 
       for (const step of steps) {
         setScanStep(step.label);
         setScanProgress(step.pct);
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, 400));
       }
 
       try {
         const prompt =
-          'You are an expert agricultural plant disease detection AI. Analyze this plant image and respond ONLY in this exact JSON format:\n' +
-          '{"plant":"<plant name>","status":"healthy|diseased|warning","disease":"<disease name or none>","confidence":<0-100>,"severity":<0-100>,"recommendations":["<tip1>","<tip2>","<tip3>"]}\n' +
-          'Be precise. If healthy, set disease to "none" and severity to 0.';
+          'You are an expert plant pathologist. Describe the visible symptoms on the leaf (color, spots, shape). ' +
+          'Then, provide a diagnosis and treatment recommendations. ' +
+          'Respond ONLY in this exact JSON format:\n' +
+          '{"plant":"<plant name>","status":"healthy|diseased|warning","disease":"<disease name or none>","confidence":<0-100>,"severity":<0-100>,"recommendations":["<tip1>","<tip2>","<tip3>"]}\n';
 
-        const raw = await llmComplete(prompt, imagePath);
+        setScanStep(t('aieye.detecting'));
+        setScanProgress(50);
+
+        const { response, thinking } = await llmComplete(prompt, imagePath, {
+          onToken: tok => {
+            setStreamingResult(prev => prev + tok);
+            setScanProgress(prev => Math.min(95, prev + 0.5));
+          },
+          onThinking: text => {
+            setLiveThinking(prev => prev + text);
+          },
+        });
+
+        if (thinking) setLiveThinking(thinking);
 
         setScanProgress(100);
         setScanStep('Done!');
 
         let parsed: any = {};
         try {
-          const jsonMatch = raw.match(/\{[\s\S]*\}/);
+          const jsonMatch = response.match(/\{[\s\S]*\}/);
           parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
         } catch {
-          parsed = { plant: 'Unknown Plant', status: 'warning', disease: 'Unable to detect', confidence: 50, severity: 30, recommendations: ['Try scanning again with better lighting', 'Ensure full leaf is visible'] };
+          parsed = { plant: 'Unknown Plant', status: 'warning', disease: 'Unable to detect', confidence: 50, severity: 30, recommendations: ['Try scanning again with better lighting'] };
         }
 
         const newScan: ScanResult = {
@@ -130,7 +166,9 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
           time: 'Just now',
           location: '17.3°N, 78.4°E',
           recommendations: parsed.recommendations,
+          source: 'ai',
         };
+
 
         setScanning(false);
         setScans(prev => [newScan, ...prev]);
@@ -141,7 +179,8 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
         Alert.alert(t('aieye.scan_failed'), e?.message ?? 'Unable to analyze image');
       }
     });
-  }, [llmComplete]);
+  }, [llmComplete, t]);
+
 
   const statusColor = (status: string) =>
     status === 'healthy' ? Colors.primary :
@@ -249,26 +288,49 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
         </View>
       </View>
 
-      {/* Scan FAB */}
-      <TouchableOpacity style={styles.fab} onPress={handleScanPlant} activeOpacity={0.85}>
-        <Text style={styles.fabIcon}>📷</Text>
-        <Text style={styles.fabText}>{t('aieye.scan_plant')}</Text>
-      </TouchableOpacity>
+      {/* Scan FABs */}
+      <View style={styles.fabRow}>
+        <TouchableOpacity style={styles.fabSecondary} onPress={() => handleScanPlant('gallery')} activeOpacity={0.85}>
+          <Text style={styles.fabIcon}>🖼</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.fab} onPress={() => handleScanPlant('camera')} activeOpacity={0.85}>
+          <Text style={styles.fabIcon}>📷</Text>
+          <Text style={styles.fabText}>{t('aieye.scan_plant')}</Text>
+        </TouchableOpacity>
+      </View>
+
 
       {/* Scanning progress modal */}
       <Modal visible={scanning} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.scanningModal}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.scanningTitle}>{t('aieye.processing')}</Text>
+            <View style={styles.scanningHeader}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={styles.scanningTitle}>{scanStep}</Text>
+            </View>
+            
             <View style={styles.scanProgressTrack}>
               <View style={[styles.scanProgressFill, { width: `${scanProgress}%` }]} />
             </View>
-            <Text style={styles.scanProgressPct}>{scanProgress}%</Text>
-            <Text style={styles.scanStep}>{scanStep}</Text>
+
+            <ScrollView style={styles.thinkingScroll} nestedScrollEnabled>
+              {liveThinking ? (
+                <View style={styles.thinkingBox}>
+                  <Text style={styles.thinkingLabel}>THOUGHT TRACE:</Text>
+                  <Text style={styles.thinkingText}>{liveThinking}</Text>
+                </View>
+              ) : null}
+              {streamingResult ? (
+                <View style={styles.resultStreamBox}>
+                  <Text style={styles.thinkingLabel}>GENERATING REPORT:</Text>
+                  <Text style={styles.streamingText}>{streamingResult}</Text>
+                </View>
+              ) : null}
+            </ScrollView>
           </View>
         </View>
       </Modal>
+
 
       {/* Result modal */}
       <Modal visible={!!result} transparent animationType="slide" onRequestClose={() => setResult(null)}>
@@ -307,6 +369,8 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
                   <Text style={styles.resultRow}>📍 {t('aieye.location')}: <Text style={styles.resultValue}>{result.location}</Text></Text>
                   <Text style={styles.resultRow}>🕐 {t('aieye.time')}: <Text style={styles.resultValue}>{result.time}</Text></Text>
+                  <Text style={styles.resultRow}>🔎 {t('aieye.source')}: <Text style={[styles.resultValue, { color: Colors.secondary }]}>GoFarmer AI</Text></Text>
+
 
                   {result.recommendations && result.recommendations.length > 0 && (
                     <>
@@ -479,14 +543,20 @@ const styles = StyleSheet.create({
   scanningModal: {
     backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: Radius.lg,
-    padding: Spacing.xl,
-    width: 300,
-    alignItems: 'center',
-    gap: Spacing.md,
+    padding: Spacing.md,
+    width: '90%',
+    maxHeight: '70%',
+    gap: Spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
-  scanningTitle: { ...Typography.titleMd, color: Colors.onSurface, textAlign: 'center' },
+  scanningHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: 4 },
+  scanningTitle: { ...Typography.titleMd, color: Colors.onSurface },
   scanProgressTrack: {
-    width: '100%', height: 8,
+    width: '100%', height: 4,
     backgroundColor: Colors.surfaceContainerHighest,
     borderRadius: Radius.full, overflow: 'hidden',
   },
@@ -495,8 +565,48 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderRadius: Radius.full,
   },
-  scanProgressPct: { ...Typography.headlineSm, color: Colors.primary, fontWeight: '700' },
+  toolBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.secondaryContainer,
+    paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: Radius.full, marginTop: 4,
+  },
+  toolBadgeText: { ...Typography.labelSm, color: Colors.onSecondaryContainer, fontWeight: '700' },
+  thinkingScroll: { marginTop: Spacing.sm, maxHeight: 400 },
+  thinkingBox: {
+    backgroundColor: '#1e1e1e',
+    padding: 10,
+    borderRadius: Radius.sm,
+    marginBottom: 10,
+  },
+  thinkingLabel: { ...Typography.labelSm, color: Colors.primaryContainer, marginBottom: 4, letterSpacing: 1 },
+  thinkingText: { ...Typography.bodySm, color: '#a5d6a7', fontStyle: 'italic', lineHeight: 18 },
+  resultStreamBox: {
+    backgroundColor: Colors.surfaceContainerLow,
+    padding: 10,
+    borderRadius: Radius.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+  },
+  streamingText: { ...Typography.bodyMd, color: Colors.onSurface, lineHeight: 22 },
+
+  fabRow: {
+    position: 'absolute',
+    bottom: 96,
+    flexDirection: 'row',
+    alignSelf: 'center',
+    gap: Spacing.sm,
+    zIndex: 30,
+  },
+  fabSecondary: {
+    width: 56, height: 56, borderRadius: Radius.lg,
+    backgroundColor: Colors.surfaceContainerHighest,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8,
+    elevation: 4,
+  },
   scanStep: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, textAlign: 'center' },
+
 
   resultSheet: {
     position: 'absolute', bottom: 0, left: 0, right: 0,

@@ -1,152 +1,395 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, Alert, Modal,
+  ActivityIndicator, Alert, Modal, TextInput, Animated, PermissionsAndroid, Platform,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Tts from 'react-native-tts';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import TopAppBar from '../components/TopAppBar';
 import { Toast } from '../components/Toast';
 import { Colors, Typography, Spacing, Radius } from '../theme/theme';
+import AudioRecord from 'react-native-audio-record';
+import { OrbAnimation } from '../components/OrbAnimation';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const STORAGE_KEY = '@gofarmer_podcasts';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PodcastItem {
   id: string;
   title: string;
   topic: string;
-  duration: string;
   language: string;
+  langCode: string;
   status: 'ready' | 'generating' | 'downloaded';
   createdAt: string;
   script?: string;
+  sentences?: string[];
 }
 
 interface LLMRadioScreenProps {
   llmComplete: (prompt: string) => Promise<string>;
   isLlmReady: boolean;
+  radioGen: { generating: boolean; step: string; pct: number };
+  startRadioGeneration: (topic: string, lang: { label: string, code: string }, style: string, onDone: (p: PodcastItem) => void, audioData?: number[]) => Promise<void>;
 }
 
+const base64ToPcm = (b64: string): number[] => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) lookup[chars.charCodeAt(i)] = i;
+
+  const bytes = new Uint8Array((b64.length * 3) / 4);
+  let p = 0;
+  for (let i = 0; i < b64.length; i += 4) {
+    const b1 = lookup[b64.charCodeAt(i)], b2 = lookup[b64.charCodeAt(i + 1)];
+    const b3 = lookup[b64.charCodeAt(i + 2)], b4 = lookup[b64.charCodeAt(i + 3)];
+    bytes[p++] = (b1 << 2) | (b2 >> 4);
+    bytes[p++] = ((b2 & 15) << 4) | (b3 >> 2);
+    bytes[p++] = ((b3 & 3) << 6) | b4;
+  }
+  
+  // Convert 8-bit bytes to 16-bit PCM samples
+  const pcm = new Int16Array(bytes.buffer);
+  return Array.from(pcm);
+};
+
 // ─── Options ──────────────────────────────────────────────────────────────────
-const TOPICS = ['Soil Management', 'Irrigation Techniques', 'Pest Control', 'Fertilizer Guide', 'Crop Rotation', 'Harvest Tips'];
-const DURATIONS = ['5 min', '10 min', '15 min', '20 min', '30 min'];
-const LANGUAGES = [{ label: '🇮🇳 Hindi', code: 'hi-IN' }, { label: '🇬🇧 English', code: 'en-IN' }, { label: '🇫🇷 Français', code: 'fr-FR' }, { label: '🇪🇸 Español', code: 'es-ES' }];
+const LANGUAGES = [
+  { label: '🇮🇳 Hindi', code: 'hi-IN' },
+  { label: '🇬🇧 English', code: 'en-IN' },
+  { label: '🇫🇷 Français', code: 'fr-FR' },
+  { label: '🇪🇸 Español', code: 'es-ES' }
+];
 const STYLES = ['Educational', 'Quick Tips', 'Story Format', 'Interview (Q&A)'];
 
-// ─── Initial podcasts ─────────────────────────────────────────────────────────
-const INITIAL_PODCASTS: PodcastItem[] = [
-  { id: '1', title: 'Complete Wheat Farming Guide', topic: 'Soil Management', duration: '15:45', language: '🇮🇳 Hindi', status: 'downloaded', createdAt: '2 days ago' },
-  { id: '2', title: 'Organic Farming Secrets', topic: 'Fertilizer Guide', duration: '12:00', language: '🇬🇧 English', status: 'downloaded', createdAt: '5 days ago' },
-  { id: '3', title: 'Soil Health Tips', topic: 'Soil Management', duration: '10:00', language: '🇮🇳 Hindi', status: 'ready', createdAt: 'Yesterday' },
-];
-
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function LLMRadioScreen({ llmComplete, isLlmReady }: LLMRadioScreenProps) {
+export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, startRadioGeneration }: LLMRadioScreenProps) {
   const { t } = useTranslation();
-  const [podcasts, setPodcasts] = useState<PodcastItem[]>(INITIAL_PODCASTS);
-  const [featured, setFeatured] = useState<PodcastItem>(INITIAL_PODCASTS[0]);
+  const [podcasts, setPodcasts] = useState<PodcastItem[]>([]);
+  const [featured, setFeatured] = useState<PodcastItem | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
-  const [speed, setSpeed] = useState('1.0x');
+  const [speed, setSpeed] = useState('0.5x');
+  const [currentSentenceIndex, setCurrentSentenceIndex] = useState(-1);
 
   // Form state
-  const [topic, setTopic] = useState(TOPICS[2]);
-  const [duration, setDuration] = useState(DURATIONS[2]);
-  const [language, setLanguage] = useState(LANGUAGES[0]);
+  const [topic, setTopic] = useState('');
+  const [language, setLanguage] = useState(LANGUAGES[1]); // Default to English
   const [style, setStyle] = useState(STYLES[0]);
 
-  // Generation state
-  const [generating, setGenerating] = useState(false);
-  const [genStep, setGenStep] = useState('');
-  const [genPct, setGenPct] = useState(0);
-
+  // Voices
+  const [voices, setVoices] = useState<any[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
+  const transcriptRef = useRef<ScrollView>(null);
+  const sentenceLayouts = useRef<{ [key: number]: { y: number, height: number } }>({});
+  
   // Picker modal state
   const [pickerModal, setPickerModal] = useState<{ type: string; options: string[] } | null>(null);
-
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as 'success' | 'error' | 'info' });
+  const [isPaused, setIsPaused] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [inputMode, setInputMode] = useState<'voice' | 'text'>('voice');
+  const audioChunksRef = useRef<string[]>([]);
+  
+  // Waveform animation values
+  const waveAnimValues = useRef(Array.from({ length: 30 }, () => new Animated.Value(0.3))).current;
+  const waveAnims = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    if (isRecording) {
+      const anims = waveAnimValues.map((v, i) =>
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(i * 30),
+            Animated.timing(v, { toValue: 1, duration: 300, useNativeDriver: true }),
+            Animated.timing(v, { toValue: 0.3, duration: 300, useNativeDriver: true }),
+          ])
+        )
+      );
+      waveAnims.current = Animated.parallel(anims);
+      waveAnims.current.start();
+    } else {
+      waveAnims.current?.stop();
+      waveAnimValues.forEach(v => v.setValue(0.2));
+    }
+  }, [isRecording]);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const vs = await Tts.voices();
+        setVoices(vs);
+        
+        const savedVoice = await AsyncStorage.getItem('@gofarmer_selected_voice');
+        if (savedVoice) {
+          setSelectedVoice(savedVoice);
+          Tts.setDefaultVoice(savedVoice);
+        } else if (vs.length > 0) {
+          setSelectedVoice(vs[0].id);
+        }
+      } catch (e) {
+        console.log('Voice init error:', e);
+      }
+    };
+    init();
+
+    const options = {
+      sampleRate: 16000,
+      channels: 1,
+      bitsPerSample: 16,
+      audioSource: 6,
+      wavFile: 'radio_input.wav'
+    };
+    AudioRecord.init(options);
+    
+    AudioRecord.on('data', data => {
+      audioChunksRef.current.push(data);
+    });
+  }, []);
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      setIsRecording(false);
+      const audioFile = await AudioRecord.stop();
+      
+      const fullB64 = audioChunksRef.current.join('');
+      const pcmData = base64ToPcm(fullB64);
+      audioChunksRef.current = [];
+
+      if (pcmData.length < 100) {
+        showToast('Audio too short, try again', 'error');
+        return;
+      }
+
+      showToast('Generating podcast from voice...', 'info');
+      
+      try {
+        await startRadioGeneration(
+          topic || 'Podcast from Voice Input', 
+          language, 
+          style, 
+          async (newPodcast) => {
+            const newList = [newPodcast, ...podcasts];
+            setPodcasts(newList);
+            await savePodcasts(newList);
+            setFeatured(newPodcast);
+            showToast('Voice Podcast Ready!', 'success');
+          },
+          pcmData
+        );
+      } catch (err: any) {
+        Alert.alert('Generation Failed', err.message);
+      }
+    } else {
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          showToast('Microphone permission denied', 'error');
+          return;
+        }
+      }
+      
+      audioChunksRef.current = [];
+      setIsRecording(true);
+      AudioRecord.start();
+    }
+  };
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ visible: true, message, type });
   };
 
+  // Persistence logic
+  const loadPodcasts = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setPodcasts(parsed);
+      }
+    } catch (e) {
+      console.error('Failed to load podcasts', e);
+    }
+  };
+
+  const savePodcasts = async (list: PodcastItem[]) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    } catch (e) {
+      console.error('Failed to save podcasts', e);
+    }
+  };
+
+  // Initial load
+  useEffect(() => {
+    loadPodcasts();
+  }, []);
+
+  // Poll for new podcasts if we're not the one who started it (or just on mount)
+  // But better: update state when radioGen finishes
+  useEffect(() => {
+    if (!radioGen.generating && radioGen.pct === 100) {
+      loadPodcasts();
+    }
+  }, [radioGen.generating, radioGen.pct]);
+
   // TTS init
   useEffect(() => {
+    Tts.getInitStatus().then(() => {
+      Tts.voices().then(v => {
+        setVoices(v);
+      });
+    });
+
     Tts.setDefaultRate(parseFloat(speed.replace('x', '')));
-    const startL = Tts.addEventListener('tts-start', () => setIsPlaying(true));
-    const finishL = Tts.addEventListener('tts-finish', () => { setIsPlaying(false); setPlayingId(null); });
-    const cancelL = Tts.addEventListener('tts-cancel', () => { setIsPlaying(false); setPlayingId(null); });
-    return () => { startL.remove(); finishL.remove(); cancelL.remove(); Tts.stop(); };
+
+    const startL = Tts.addEventListener('tts-start', () => {
+      setIsPlaying(true);
+      setIsPaused(false);
+    });
+
+    const finishL = Tts.addEventListener('tts-finish', () => {
+      // Logic handled in separate useEffect for chaining
+    });
+
+    return () => {
+      Tts.stop();
+    };
   }, [speed]);
 
-  const handlePlay = (podcast: PodcastItem) => {
-    if (isPlaying && playingId === podcast.id) {
+  // Voice selection effect (Instant update)
+  useEffect(() => {
+    if (selectedVoice && featured) {
+      Tts.setDefaultLanguage(featured.langCode).catch(() => {});
+      Tts.setDefaultVoice(selectedVoice).catch(() => {});
+      // If already playing, restart current sentence with new voice
+      if (isPlaying && !isPaused && currentSentenceIndex !== -1) {
+        Tts.stop();
+        setTimeout(() => {
+          if (featured?.sentences && currentSentenceIndex !== -1) {
+            Tts.speak(featured.sentences[currentSentenceIndex]);
+          }
+        }, 50);
+      }
+    }
+  }, [selectedVoice]);
+
+  // Handle current sentence index changes (Auto-scroll & Chaining)
+  useEffect(() => {
+    if (currentSentenceIndex >= 0 && featured?.sentences && isPlaying && !isPaused) {
+      // Precise centering using tracked layout data
+      const layout = sentenceLayouts.current[currentSentenceIndex];
+      if (layout) {
+        const containerHeight = 220;
+        const scrollY = Math.max(0, layout.y - (containerHeight / 2) + (layout.height / 2));
+        transcriptRef.current?.scrollTo({ y: scrollY, animated: true });
+      }
+
+      // Speak current sentence
       Tts.stop();
+      Tts.speak(featured.sentences[currentSentenceIndex]);
+    }
+  }, [currentSentenceIndex, isPlaying, isPaused]);
+
+  // Handle TTS finish for chaining
+  useEffect(() => {
+    const l = Tts.addEventListener('tts-finish', () => {
+      if (isPlaying && !isPaused && featured?.sentences) {
+        if (currentSentenceIndex < featured.sentences.length - 1) {
+          setCurrentSentenceIndex(prev => prev + 1);
+        } else {
+          setIsPlaying(false);
+          setPlayingId(null);
+          setCurrentSentenceIndex(-1);
+        }
+      }
+    });
+    return () => l.remove();
+  }, [isPlaying, isPaused, featured, currentSentenceIndex]);
+
+  const splitIntoSentences = (text: string) => {
+    return text.split(/([.!?])\s+/).reduce((acc: string[], cur, i, arr) => {
+      if (i % 2 === 0) {
+        const punctuation = arr[i + 1] || '';
+        acc.push(cur + punctuation);
+      }
+      return acc;
+    }, []).filter(s => s.trim().length > 0);
+  };
+
+  const handlePlay = (podcast: PodcastItem, startIndex?: number) => {
+    if (startIndex !== undefined) {
+      Tts.stop();
+      setPlayingId(podcast.id);
+      setFeatured(podcast);
+      setIsPaused(false);
+      setIsPlaying(true);
+      setCurrentSentenceIndex(startIndex);
+      Tts.setDefaultLanguage(podcast.langCode).catch(() => {});
       return;
     }
+
+    if (playingId === podcast.id) {
+      if (isPlaying && !isPaused) {
+        Tts.stop();
+        setIsPaused(true);
+      } else {
+        setIsPaused(false);
+        setIsPlaying(true);
+        if (currentSentenceIndex === -1) setCurrentSentenceIndex(0);
+      }
+      return;
+    }
+
     Tts.stop();
-    if (!podcast.script) {
-      showToast(t('radio.no_script'), 'info');
-      return;
-    }
     setPlayingId(podcast.id);
-    Tts.setDefaultLanguage(language.code).catch(() => {});
-    Tts.speak(podcast.script);
+    setFeatured(podcast);
+    setIsPaused(false);
+    setIsPlaying(true);
+    setCurrentSentenceIndex(0);
+    Tts.setDefaultLanguage(podcast.langCode).catch(() => {});
+    
+    const langVoices = voices.filter(v => v.language.includes(podcast.langCode.split('-')[0]));
+    if (langVoices.length > 0) setSelectedVoice(langVoices[0].id);
+  };
+
+  const handleNext = () => {
+    if (!featured) return;
+    const idx = podcasts.findIndex(p => p.id === featured.id);
+    if (idx > 0) {
+      const next = podcasts[idx - 1];
+      handlePlay(next);
+    }
+  };
+
+  const handlePrev = () => {
+    if (!featured) return;
+    const idx = podcasts.findIndex(p => p.id === featured.id);
+    if (idx < podcasts.length - 1) {
+      const prev = podcasts[idx + 1];
+      handlePlay(prev);
+    }
   };
 
   const handleGenerate = async () => {
     if (!isLlmReady) { showToast(t('advisor.loading'), 'info'); return; }
-    if (generating) return;
-
-    setGenerating(true);
-
-    const steps = [
-      { label: t('radio.creating_script'), pct: 20 },
-      { label: t('radio.analyzing_topic'), pct: 45 },
-      { label: t('radio.optimizing_content'), pct: 70 },
-      { label: t('radio.finalizing'), pct: 90 },
-    ];
-
-    for (const step of steps) {
-      setGenStep(step.label);
-      setGenPct(step.pct);
-      await new Promise(r => setTimeout(r, 700));
-    }
-
-    const prompt =
-      `You are a professional agricultural podcast host. Generate a ${duration} ${style.toLowerCase()} podcast script about "${topic}" for Indian farmers.\n` +
-      `Language: ${language.label}\n` +
-      `Requirements:\n- Start with a warm introduction\n- Provide practical, actionable advice\n- Use simple language a farmer can understand\n- Include specific tips, numbers, and examples\n- End with a motivational close\n` +
-      `Generate the full podcast script now:`;
+    if (radioGen.generating) return;
 
     try {
-      const script = await llmComplete(prompt);
-      setGenPct(100);
-      setGenStep(t('radio.done'));
-      await new Promise(r => setTimeout(r, 400));
-
-      const newPodcast: PodcastItem = {
-        id: Date.now().toString(),
-        title: `${topic} — ${style}`,
-        topic,
-        duration: duration,
-        language: language.label,
-        status: 'ready',
-        createdAt: 'Just now',
-        script: script.trim(),
-      };
-
-      setPodcasts(prev => [newPodcast, ...prev]);
-      setFeatured(newPodcast);
-      showToast(t('radio.gen_success'), 'success');
+      await startRadioGeneration(topic, language, style, async (newP) => {
+        const newList = [newP, ...podcasts];
+        setPodcasts(newList);
+        await savePodcasts(newList);
+        setFeatured(newP);
+        showToast(t('radio.gen_success'), 'success');
+      });
     } catch (e: any) {
       Alert.alert(t('radio.gen_failed'), e?.message ?? 'Try again');
-    } finally {
-      setGenerating(false);
-      setGenPct(0);
-      setGenStep('');
     }
   };
 
-  // Picker
   const openPicker = (type: string, options: string[]) => {
     setPickerModal({ type, options });
   };
@@ -155,165 +398,284 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady }: LLMRadioScre
     if (!pickerModal) return;
     switch (pickerModal.type) {
       case 'topic': setTopic(value); break;
-      case 'duration': setDuration(value); break;
       case 'style': setStyle(value); break;
       case 'language':
-        setLanguage(LANGUAGES.find(l => l.label === value) || LANGUAGES[0]); break;
+        const newLang = LANGUAGES.find(l => l.label === value) || LANGUAGES[1];
+        setLanguage(newLang);
+        break;
+      case 'voice':
+        const v = voices.find(x => x.name === value || x.id === value);
+        if (v) setSelectedVoice(v.id);
+        break;
     }
     setPickerModal(null);
   };
 
-  const speedOptions = ['0.5x', '0.75x', '1.0x', '1.25x', '1.5x', '2.0x'];
+  const speedOptions = ['0.5x', '0.75x', '1.0x', '1.25x'];
+
+  const handleDelete = (id: string) => {
+    Tts.stop();
+    const newList = podcasts.filter(x => x.id !== id);
+    setPodcasts(newList);
+    savePodcasts(newList);
+    if (featured?.id === id) setFeatured(null);
+  };
 
   return (
     <View style={styles.flex}>
-      <TopAppBar title="GoFarmer" rightLabel={t('common.downloads')} />
-
+      <TopAppBar title="GoFarmer" />
       <ScrollView style={styles.flex} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        
+        {/* Featured player (only if podcast exists) */}
+        {featured ? (
+          <View style={styles.playerCard}>
+            <View style={styles.playerHeader}>
+              <Text style={styles.playerLabel}>🎧 {t('radio.now_playing')}</Text>
+              <View style={[styles.statusBadge, { backgroundColor: Colors.primaryContainer }]}>
+                <Text style={styles.statusText}>{featured.language}</Text>
+              </View>
+            </View>
 
-        {/* Featured player */}
-        <View style={styles.playerCard}>
-          <View style={styles.playerHeader}>
-            <Text style={styles.playerLabel}>🎧 {t('radio.now_playing')}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: featured.status === 'downloaded' ? Colors.primaryContainer : Colors.surfaceContainerHigh }]}>
-              <Text style={styles.statusText}>{featured.status === 'downloaded' ? `📥 ${t('radio.downloaded')}` : `📡 ${t('radio.ready')}`}</Text>
+            <Text style={styles.playerTitle}>{featured.title}</Text>
+            
+            {/* Transcript (Lyrics style) */}
+            <View style={styles.transcriptContainer}>
+              <ScrollView 
+                ref={transcriptRef}
+                style={styles.transcriptScroll} 
+                nestedScrollEnabled 
+                showsVerticalScrollIndicator={false}
+              >
+                {featured.sentences?.map((s, i) => (
+                  <TouchableOpacity 
+                    key={i} 
+                    onPress={() => handlePlay(featured, i)}
+                    onLayout={(e) => {
+                      const { y, height } = e.nativeEvent.layout;
+                      sentenceLayouts.current[i] = { y, height };
+                    }}
+                    style={[
+                      styles.transcriptItem,
+                      i === currentSentenceIndex && styles.transcriptItemActive
+                    ]}
+                  >
+                    <Text style={[
+                      styles.transcriptText,
+                      i === currentSentenceIndex && styles.transcriptTextActive
+                    ]}>
+                      {s}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Controls */}
+            <View style={styles.playerControls}>
+              <TouchableOpacity 
+                style={[styles.controlBtn, podcasts.indexOf(featured) === podcasts.length - 1 && styles.disabledBtn]} 
+                onPress={handlePrev}
+                disabled={podcasts.indexOf(featured) === podcasts.length - 1}
+              >
+                <Text style={styles.controlIcon}>⏮</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.playBtn}
+                onPress={() => handlePlay(featured)}
+              >
+                <Text style={styles.playBtnIcon}>
+                  {(isPlaying && !isPaused && playingId === featured.id) ? '⏸' : '▶️'}
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.controlBtn, podcasts.indexOf(featured) === 0 && styles.disabledBtn]} 
+                onPress={handleNext}
+                disabled={podcasts.indexOf(featured) === 0}
+              >
+                <Text style={styles.controlIcon}>⏭</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Speed & Voice */}
+            <View style={styles.metaRow}>
+              <View style={styles.speedRow}>
+                <Text style={styles.speedLabel}>{t('radio.speed')}:</Text>
+                {speedOptions.map(s => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.speedBtn, s === speed && styles.speedBtnActive]}
+                    onPress={() => { setSpeed(s); Tts.setDefaultRate(parseFloat(s.replace('x', ''))); }}
+                  >
+                    <Text style={[styles.speedBtnText, s === speed && styles.speedBtnTextActive]}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {voices.filter(v => v.language.includes((featured?.langCode || language.code).split('-')[0])).length > 0 && (
+                <TouchableOpacity style={styles.voiceBtn} onPress={() => openPicker('voice', voices.filter(v => v.language.includes((featured?.langCode || language.code).split('-')[0])).map(v => v.name || v.id))}>
+                  <Text style={styles.voiceBtnText}>🗣 {voices.find(v => v.id === selectedVoice)?.name || 'Voice'}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
-
-          <Text style={styles.playerTitle}>{featured.title}</Text>
-          <Text style={styles.playerMeta}>
-            {featured.duration}  ·  {featured.language}  ·  {featured.createdAt}
-          </Text>
-
-          {/* Progress */}
-          <View style={styles.progressTrack}>
-            <View style={styles.progressFill} />
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>
+              {podcasts.length > 0 ? `📻 ${t('radio.select_to_play')}` : `📻 ${t('radio.no_script')}`}
+            </Text>
+            <Text style={styles.emptySubText}>
+              {podcasts.length > 0 ? t('radio.tap_recent') : t('radio.create_new')}
+            </Text>
           </View>
-          <View style={styles.progressTimes}>
-            <Text style={styles.progressTime}>00:00</Text>
-            <Text style={styles.progressTime}>{featured.duration}</Text>
-          </View>
-
-          {/* Controls */}
-          <View style={styles.playerControls}>
-            <TouchableOpacity style={styles.controlBtn}><Text style={styles.controlIcon}>⏮</Text></TouchableOpacity>
-            <TouchableOpacity
-              style={styles.playBtn}
-              onPress={() => handlePlay(featured)}
-            >
-              <Text style={styles.playBtnIcon}>
-                {isPlaying && playingId === featured.id ? '⏸' : '▶️'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.controlBtn}><Text style={styles.controlIcon}>⏭</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.controlBtn}><Text style={styles.controlIcon}>🔊</Text></TouchableOpacity>
-          </View>
-
-          {/* Speed selector */}
-          <View style={styles.speedRow}>
-            <Text style={styles.speedLabel}>{t('radio.speed')}:</Text>
-            {speedOptions.map(s => (
-              <TouchableOpacity
-                key={s}
-                style={[styles.speedBtn, s === speed && styles.speedBtnActive]}
-                onPress={() => { setSpeed(s); Tts.setDefaultRate(parseFloat(s.replace('x', ''))); }}
-              >
-                <Text style={[styles.speedBtnText, s === speed && styles.speedBtnTextActive]}>{s}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+        )}
 
         {/* Generate section */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>✨ {t('radio.create_new')}</Text>
-
-          <View style={styles.selectGroup}>
-            <Text style={styles.selectLabel}>{t('radio.topic')}</Text>
-            <TouchableOpacity style={styles.selectBtn} onPress={() => openPicker('topic', TOPICS)}>
-              <Text style={styles.selectValue}>{topic}</Text>
-              <Text style={styles.selectArrow}>▼</Text>
-            </TouchableOpacity>
+        <View style={[styles.sectionCard, radioGen.generating && { opacity: 0.8 }]}>
+          <View style={styles.genHeader}>
+            <Text style={styles.sectionTitle}>{t('radio.create_new')}</Text>
+            <View style={styles.modeToggle}>
+              <TouchableOpacity 
+                style={[styles.modeBtn, inputMode === 'voice' && styles.modeBtnActive]} 
+                onPress={() => setInputMode('voice')}
+              >
+                <Text style={[styles.modeBtnText, inputMode === 'voice' && styles.modeBtnTextActive]}>Voice</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modeBtn, inputMode === 'text' && styles.modeBtnActive]} 
+                onPress={() => setInputMode('text')}
+              >
+                <Text style={[styles.modeBtnText, inputMode === 'text' && styles.modeBtnTextActive]}>Text</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-
-          <View style={styles.selectGroup}>
-            <Text style={styles.selectLabel}>{t('radio.duration')}</Text>
-            <TouchableOpacity style={styles.selectBtn} onPress={() => openPicker('duration', DURATIONS)}>
-              <Text style={styles.selectValue}>{duration}</Text>
-              <Text style={styles.selectArrow}>▼</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.selectGroup}>
-            <Text style={styles.selectLabel}>{t('radio.language')}</Text>
-            <TouchableOpacity style={styles.selectBtn} onPress={() => openPicker('language', LANGUAGES.map(l => l.label))}>
-              <Text style={styles.selectValue}>{language.label}</Text>
-              <Text style={styles.selectArrow}>▼</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.selectGroup}>
-            <Text style={styles.selectLabel}>{t('radio.style')}</Text>
-            <TouchableOpacity style={styles.selectBtn} onPress={() => openPicker('style', STYLES)}>
-              <Text style={styles.selectValue}>{style}</Text>
-              <Text style={styles.selectArrow}>▼</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Generation progress */}
-          {generating && (
-            <View style={styles.genProgress}>
-              <Text style={styles.genStep}>{genStep}</Text>
-              <View style={styles.genTrack}>
-                <View style={[styles.genFill, { width: `${genPct}%` }]} />
+          
+          {inputMode === 'voice' ? (
+            <View style={styles.voiceInputArea}>
+              <View style={styles.waveformRow}>
+                {waveAnimValues.map((v, i) => (
+                  <Animated.View
+                    key={i}
+                    style={[
+                      styles.waveBar,
+                      {
+                        transform: [{ scaleY: v }],
+                        backgroundColor: isRecording ? Colors.primary : Colors.outlineVariant,
+                      },
+                    ]}
+                  />
+                ))}
               </View>
-              <Text style={styles.genPct}>{genPct}%</Text>
+              
+              <TouchableOpacity 
+                style={[styles.minimalMicBtn, isRecording && styles.minimalMicBtnActive]} 
+                onPress={toggleRecording}
+                disabled={radioGen.generating}
+              >
+                <View style={styles.whiteCircle} />
+              </TouchableOpacity>
+              
+              {isRecording && <Text style={styles.recordingStatus}>Listening...</Text>}
+            </View>
+          ) : (
+            <View style={[styles.selectGroup, radioGen.generating && styles.disabledForm]}>
+              <Text style={styles.selectLabel}>{t('radio.topic')}</Text>
+              <View style={styles.customTopicContainer}>
+                <TextInput
+                  style={styles.customTopicInput}
+                  placeholder={t('doubts.placeholder')}
+                  placeholderTextColor={Colors.onSurfaceVariant}
+                  value={topic}
+                  onChangeText={setTopic}
+                  multiline
+                  editable={!radioGen.generating}
+                />
+              </View>
             </View>
           )}
 
-          <TouchableOpacity
-            style={[styles.generateBtn, (!isLlmReady || generating) && styles.generateBtnDisabled]}
-            onPress={handleGenerate}
-            disabled={!isLlmReady || generating}
-            activeOpacity={0.85}
-          >
-            {generating ? <ActivityIndicator color={Colors.onPrimary} size="small" /> : null}
-            <Text style={styles.generateBtnText}>
-              {generating ? t('radio.generating') : `✨ ${t('radio.generate')} ✨`}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.row}>
+            <View style={[styles.selectGroup, { flex: 1 }, radioGen.generating && styles.disabledForm]}>
+              <Text style={styles.selectLabel}>{t('radio.language')}</Text>
+              <TouchableOpacity 
+                style={styles.compactSelect} 
+                onPress={() => !radioGen.generating && openPicker('language', LANGUAGES.map(l => l.label))}
+                disabled={radioGen.generating}
+              >
+                <Text style={styles.selectValue}>{language.label}</Text>
+                <Text style={styles.selectArrow}>▼</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.selectGroup, { flex: 1 }, radioGen.generating && styles.disabledForm]}>
+              <Text style={styles.selectLabel}>{t('radio.style')}</Text>
+              <TouchableOpacity 
+                style={styles.compactSelect} 
+                onPress={() => !radioGen.generating && openPicker('style', STYLES)}
+                disabled={radioGen.generating}
+              >
+                <Text style={styles.selectValue}>{style}</Text>
+                <Text style={styles.selectArrow}>▼</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {radioGen.generating && (
+            <View style={styles.genProgress}>
+              <Text style={styles.genStep}>{t(radioGen.step)}</Text>
+              <View style={styles.genTrack}>
+                <View style={[styles.genFill, { width: `${radioGen.pct}%` }]} />
+              </View>
+              <Text style={styles.genPct}>{radioGen.pct}%</Text>
+            </View>
+          )}
+
+          {inputMode === 'text' && (
+            <TouchableOpacity
+              style={[styles.generateBtn, (!isLlmReady || radioGen.generating || !topic.trim()) && styles.generateBtnDisabled]}
+              onPress={handleGenerate}
+              disabled={!isLlmReady || radioGen.generating || !topic.trim()}
+              activeOpacity={0.85}
+            >
+              {radioGen.generating ? <ActivityIndicator color={Colors.onPrimary} size="small" /> : null}
+              <Text style={styles.generateBtnText}>
+                {radioGen.generating ? t('radio.generating') : `✨ ${t('radio.generate')} ✨`}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Recent podcasts */}
-        <View>
-          <Text style={styles.sectionTitle}>{t('radio.recent_podcasts')}</Text>
-          {podcasts.map(p => (
-            <View key={p.id} style={styles.podcastCard}>
-              <View style={styles.podcastLeft}>
-                <Text style={styles.podcastIcon}>🎙</Text>
-                <View style={styles.podcastInfo}>
-                  <Text style={styles.podcastTitle} numberOfLines={1}>{p.title}</Text>
-                  <Text style={styles.podcastMeta}>{p.duration}  ·  {p.language}</Text>
-                  <Text style={styles.podcastTime}>{p.createdAt}</Text>
+        {podcasts.length > 0 && (
+          <View>
+            <Text style={styles.sectionTitle}>{t('radio.recent_podcasts')}</Text>
+            {podcasts.map(p => (
+              <View key={p.id} style={styles.podcastCard}>
+                <View style={styles.podcastLeft}>
+                  <Text style={styles.podcastIcon}>🎙</Text>
+                  <View style={styles.podcastInfo}>
+                    <Text style={styles.podcastTitle} numberOfLines={1}>{p.title}</Text>
+                    <Text style={styles.podcastMeta}>{p.language}  ·  {p.createdAt}</Text>
+                  </View>
+                </View>
+                <View style={styles.podcastActions}>
+                  <TouchableOpacity style={styles.podcastActionBtn} onPress={() => handlePlay(p)}>
+                    <Text style={styles.podcastActionIcon}>
+                      {(isPlaying && !isPaused && playingId === p.id) ? '⏸' : '▶️'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.podcastActionBtn}
+                    onPress={() => handleDelete(p.id)}
+                  >
+                    <Text style={[styles.podcastActionIcon, { color: Colors.error }]}>✕</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-              <View style={styles.podcastActions}>
-                <TouchableOpacity style={styles.podcastActionBtn} onPress={() => { setFeatured(p); handlePlay(p); }}>
-                  <Text style={styles.podcastActionIcon}>{isPlaying && playingId === p.id ? '⏸' : '▶️'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.podcastActionBtn}>
-                  <Text style={styles.podcastActionIcon}>⬇</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.podcastActionBtn}
-                  onPress={() => { Tts.stop(); setPodcasts(prev => prev.filter(x => x.id !== p.id)); }}
-                >
-                  <Text style={[styles.podcastActionIcon, { color: Colors.error }]}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       {/* Picker modal */}
@@ -327,9 +689,9 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady }: LLMRadioScre
                 <TouchableOpacity key={opt} style={styles.pickerOption} onPress={() => selectOption(opt)}>
                   <Text style={styles.pickerOptionText}>{opt}</Text>
                   {(pickerModal.type === 'topic' ? opt === topic :
-                    pickerModal.type === 'duration' ? opt === duration :
                     pickerModal.type === 'style' ? opt === style :
-                    opt === language.label) && (
+                    pickerModal.type === 'language' ? opt === language.label :
+                    opt === selectedVoice || opt === voices.find(v => v.id === selectedVoice)?.name) && (
                     <Text style={{ color: Colors.primary, fontWeight: '700' }}>✓</Text>
                   )}
                 </TouchableOpacity>
@@ -349,7 +711,6 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady }: LLMRadioScre
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.background },
   content: { padding: Spacing.margin, paddingBottom: 100, gap: Spacing.lg },
@@ -360,37 +721,69 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.outlineVariant,
-    gap: Spacing.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    gap: Spacing.md,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 4,
   },
   playerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  playerLabel: { ...Typography.labelMd, color: Colors.onSurfaceVariant, letterSpacing: 1.5 },
+  playerLabel: { ...Typography.labelMd, color: Colors.onSurfaceVariant, letterSpacing: 1.2 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: Radius.full },
   statusText: { ...Typography.labelSm, color: Colors.onSurface },
   playerTitle: { ...Typography.titleLg, color: Colors.onSurface, fontWeight: '700' },
-  playerMeta: { ...Typography.labelMd, color: Colors.onSurfaceVariant },
 
-  progressTrack: { height: 4, backgroundColor: Colors.surfaceContainerHighest, borderRadius: Radius.full, overflow: 'hidden', marginTop: Spacing.sm },
-  progressFill: { width: '10%', height: '100%', backgroundColor: Colors.primary, borderRadius: Radius.full },
-  progressTimes: { flexDirection: 'row', justifyContent: 'space-between' },
-  progressTime: { ...Typography.labelSm, color: Colors.onSurfaceVariant },
+  transcriptContainer: { 
+    height: 220, 
+    backgroundColor: Colors.surfaceContainerLow, 
+    borderRadius: Radius.md, 
+    marginVertical: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    overflow: 'hidden',
+  },
+  transcriptScroll: { flex: 1 },
+  transcriptItem: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: Radius.sm,
+    marginHorizontal: 4,
+  },
+  transcriptItemActive: {
+    backgroundColor: Colors.primaryContainer + '30',
+  },
+  transcriptText: { 
+    ...Typography.bodyMedium, 
+    color: Colors.onSurfaceVariant, 
+    lineHeight: 24, 
+    fontSize: 16,
+    opacity: 0.6,
+    textAlign: 'center',
+  },
+  transcriptTextActive: { 
+    color: Colors.primary, 
+    fontWeight: '700', 
+    fontSize: 18,
+    opacity: 1,
+  },
 
-  playerControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.lg, marginTop: Spacing.sm },
-  controlBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  controlIcon: { fontSize: 24 },
-  playBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
-  playBtnIcon: { fontSize: 28 },
+  playerControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xl, marginVertical: Spacing.sm },
+  controlBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  controlIcon: { fontSize: 32, color: Colors.onSurface },
+  disabledBtn: { opacity: 0.3 },
+  playBtn: { width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 6 },
+  playBtnIcon: { fontSize: 36 },
 
-  speedRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, flexWrap: 'wrap', marginTop: 4 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: Spacing.md },
+  speedRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   speedLabel: { ...Typography.labelMd, color: Colors.onSurfaceVariant },
-  speedBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.outlineVariant },
+  speedBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.outlineVariant },
   speedBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   speedBtnText: { ...Typography.labelSm, color: Colors.onSurface },
   speedBtnTextActive: { color: Colors.onPrimary },
+  voiceBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: Colors.secondaryContainer },
+  voiceBtnText: { ...Typography.labelMd, color: Colors.onSecondaryContainer },
+
+  emptyState: { alignItems: 'center', justifyContent: 'center', padding: 40, backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.lg, borderStyle: 'dashed', borderWidth: 2, borderColor: Colors.outlineVariant },
+  emptyText: { ...Typography.titleLarge, color: Colors.onSurfaceVariant, marginBottom: 8 },
+  emptySubText: { ...Typography.bodyMedium, color: Colors.outline },
 
   sectionCard: {
     backgroundColor: Colors.surfaceContainerLowest,
@@ -399,16 +792,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.outlineVariant,
     gap: Spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    elevation: 2,
   },
-  sectionTitle: { ...Typography.titleMd, color: Colors.onSurface, fontWeight: '700', marginBottom: 4 },
+  sectionTitle: { ...Typography.titleMedium, color: Colors.onSurface, fontWeight: '700', marginBottom: 4 },
 
   selectGroup: { gap: 4 },
-  selectLabel: { ...Typography.labelMd, color: Colors.onSurfaceVariant },
+  selectLabel: { ...Typography.labelMedium, color: Colors.onSurfaceVariant },
   selectBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     borderWidth: 1, borderColor: Colors.outlineVariant,
@@ -416,22 +805,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md, paddingVertical: 12,
     backgroundColor: Colors.surfaceContainerLow,
   },
-  selectValue: { ...Typography.bodyLg, color: Colors.onSurface },
-  selectArrow: { ...Typography.labelSm, color: Colors.onSurfaceVariant },
+  selectValue: { ...Typography.bodyLarge, color: Colors.onSurface },
+  selectArrow: { ...Typography.labelSmall, color: Colors.onSurfaceVariant },
+
+  disabledForm: { opacity: 0.5 },
 
   genProgress: { gap: Spacing.sm, alignItems: 'center' },
-  genStep: { ...Typography.bodyMd, color: Colors.onSurfaceVariant },
+  genStep: { ...Typography.bodyMedium, color: Colors.onSurfaceVariant },
   genTrack: { width: '100%', height: 8, backgroundColor: Colors.surfaceContainerHighest, borderRadius: Radius.full, overflow: 'hidden' },
   genFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: Radius.full },
-  genPct: { ...Typography.titleMd, color: Colors.primary, fontWeight: '700' },
+  genPct: { ...Typography.titleMedium, color: Colors.primary, fontWeight: '700' },
 
   generateBtn: {
     height: 56, backgroundColor: Colors.primary, borderRadius: Radius.lg,
     alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: Spacing.sm,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 8, elevation: 4,
+    elevation: 4,
   },
   generateBtnDisabled: { opacity: 0.5 },
-  generateBtnText: { ...Typography.labelLg, color: Colors.onPrimary, fontWeight: '700', fontSize: 16 },
+  generateBtnText: { ...Typography.labelLarge, color: Colors.onPrimary, fontWeight: '700', fontSize: 16 },
 
   podcastCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -440,17 +831,53 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     marginBottom: Spacing.sm,
     borderWidth: 1, borderColor: Colors.outlineVariant,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 2, elevation: 1,
   },
   podcastLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flex: 1 },
   podcastIcon: { fontSize: 28 },
   podcastInfo: { flex: 1 },
-  podcastTitle: { ...Typography.labelMd, color: Colors.onSurface, fontWeight: '700' },
-  podcastMeta: { ...Typography.labelSm, color: Colors.onSurfaceVariant, marginTop: 2 },
-  podcastTime: { ...Typography.labelSm, color: Colors.outlineVariant },
+  podcastTitle: { ...Typography.labelMedium, color: Colors.onSurface, fontWeight: '700' },
+  podcastMeta: { ...Typography.labelSmall, color: Colors.onSurfaceVariant, marginTop: 2 },
   podcastActions: { flexDirection: 'row', gap: 4 },
   podcastActionBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18 },
   podcastActionIcon: { fontSize: 18 },
+  
+  genHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  modeToggle: { flexDirection: 'row', backgroundColor: Colors.surfaceContainerHigh, borderRadius: 20, padding: 2 },
+  modeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 18 },
+  modeBtnActive: { backgroundColor: '#fff', elevation: 2 },
+  modeBtnText: { ...Typography.labelSmall, color: Colors.onSurfaceVariant },
+  modeBtnTextActive: { color: Colors.primary, fontWeight: '700' },
+
+  voiceInputArea: { alignItems: 'center', gap: 16, marginVertical: 10 },
+  waveformRow: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 50, width: '100%', justifyContent: 'center' },
+  waveBar: { width: 3, height: '80%', borderRadius: 1.5, backgroundColor: Colors.primary + '88' },
+  minimalMicBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.outlineVariant },
+  minimalMicBtnActive: { backgroundColor: Colors.error + '22', borderColor: Colors.error },
+  whiteCircle: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3 },
+  recordingStatus: { ...Typography.labelSmall, color: Colors.error, fontWeight: '900', letterSpacing: 1 },
+  
+  customTopicContainer: { marginTop: 4 },
+  customTopicInput: {
+    backgroundColor: Colors.surfaceContainerLow,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    ...Typography.bodyLarge,
+    color: Colors.onSurface,
+    minHeight: 48,
+    textAlignVertical: 'top',
+  },
+  row: { flexDirection: 'row', gap: Spacing.md },
+  compactSelect: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1, borderColor: Colors.outlineVariant,
+    borderRadius: Radius.DEFAULT,
+    paddingHorizontal: Spacing.sm, paddingVertical: 8,
+    backgroundColor: Colors.surfaceContainerLow,
+  },
+
 
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   pickerSheet: {
@@ -459,10 +886,10 @@ const styles = StyleSheet.create({
     padding: Spacing.lg, maxHeight: '60%',
   },
   modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: Colors.outlineVariant, alignSelf: 'center', marginBottom: Spacing.md },
-  pickerTitle: { ...Typography.titleMd, color: Colors.onSurface, marginBottom: Spacing.md, textTransform: 'capitalize' },
+  pickerTitle: { ...Typography.titleMedium, color: Colors.onSurface, marginBottom: Spacing.md, textTransform: 'capitalize' },
   pickerOption: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant,
   },
-  pickerOptionText: { ...Typography.bodyLg, color: Colors.onSurface },
+  pickerOptionText: { ...Typography.bodyLarge, color: Colors.onSurface },
 });

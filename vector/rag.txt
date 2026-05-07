@@ -1,0 +1,351 @@
+Powdery Mildew
+Category: Fungi
+
+Symptoms: White, flour-like coating on leaves and stems. Leaves may curl, become stunted, or drop prematurely.
+
+How it Travels / Spread Vector: Wind: Airborne spores thrive in high humidity but do not require liquid water to germinate.
+
+Chemical Treatment / Composition: Sulfur-based fungicides, Potassium Bicarbonate (KHCO3), Neem Oil (Azadirachtin).
+
+How to Stop the Spread / Management: Airflow: Prune to increase ventilation. Watering: Avoid overhead watering to keep foliage dry.
+
+Downy Mildew
+Category: Fungi (Oomycete)
+
+Symptoms: Yellow or pale green spots on the upper leaf surface; gray, purple, or brown fuzzy growth on the underside.
+
+How it Travels / Spread Vector: Water & Wind: Waterborne spores travel in splashing rain or overhead irrigation during cool, wet weather.
+
+Chemical Treatment / Composition: Copper-based fungicides (Copper Octanoate), Mancozeb, Fosetyl-Al.
+
+How to Stop the Spread / Management: Watering: Water at the base early in the day. Airflow: Space plants adequately.
+
+Rust (Common, Cedar Apple, etc.)
+Category: Fungi
+
+Symptoms: Raised, rust-colored (orange, yellow, or red) pustules, primarily on the undersides of leaves.
+
+How it Travels / Spread Vector: Wind & Rain: Spores are blown by wind. Some rusts require two different host plants to complete their life cycle.
+
+Chemical Treatment / Composition: Myclobutanil, Propiconazole, Sulfur powders.
+
+How to Stop the Spread / Management: Sanitation: Rake and destroy fallen leaves. Crop Rotation: Separate alternating host plants.
+
+Early Blight (Alternaria)
+Category: Fungi
+
+Symptoms: Dark brown/black spots with characteristic 'target-like' concentric rings. Lower leaves usually affected first.
+
+How it Travels / Spread Vector: Soil & Water: Soil-borne spores are splashed onto lower leaves by heavy rain or overhead irrigation.
+
+Chemical Treatment / Composition: Chlorothalonil, Copper fungicides, Bacillus subtilis (biological).
+
+How to Stop the Spread / Management: Crop Rotation: 3-year rotation away from host families. Sanitation: Mulch to prevent soil splash.
+
+Late Blight (Phytophthora infestans)
+Category: Fungi (Oomycete)
+
+Symptoms: Large, water-soaked, dark-green to black blotches. White fuzzy mold on leaf undersides in high humidity.
+
+How it Travels / Spread Vector: Wind & Water: Airborne sporangia can travel for miles. Requires continuous moisture on leaves to infect.
+
+Chemical Treatment / Composition: Mefenoxam, Chlorothalonil, Copper sulfate. (Highly prone to chemical resistance).
+
+How to Stop the Spread / Management: Sanitation: Critical to remove and destroy infected plants immediately. Watering: Keep foliage strictly dry.
+
+Fusarium Wilt
+Category: Fungi
+
+Symptoms: Yellowing and wilting of older leaves, often starting on one side. Vascular tissue inside the stem turns dark brown.
+
+How it Travels / Spread Vector: Soil & Humans: Soil-borne pathogen enters through root wounds. Spreads via contaminated farm equipment.
+
+Chemical Treatment / Composition: Soil fumigants (Metam sodium) used pre-planting. No cure once infected.
+
+How to Stop the Spread / Management: Crop Rotation: Long rotations. Sanitation: Solarize soil with clear plastic. Plant resistant varieties (labeled 'F').
+
+Verticillium Wilt
+Category: Fungi
+
+Symptoms: V-shaped yellow lesions at leaf margins turning brown. Plants wilt during the day and recover at night.
+
+How it Travels / Spread Vector: Soil: Survives in soil for years as microsclerotia. Enters through roots.
+
+Chemical Treatment / Composition: No effective chemical treatment for living plants. Pre-plant soil fumigation in commercial settings.
+
+How to Stop the Spread / Management: Crop Rotation: Use non-host crops (like corn/wheat). Sanitation: Remove and destroy infected roots and soil.
+
+Anthracnose
+Category: Fungi
+
+Symptoms: Sunken, dark brown or black lesions on stems, leaves, and fruit. Pinkish spore masses appear in wet weather.
+
+How it Travels / Spread Vector: Water & Seeds: Spreads locally by splashing rain and overhead irrigation. Can also be seed-borne.
+
+Chemical Treatment / Composition: Copper hydroxide, Chlorothalonil, Thiophanate-methyl.
+
+How to Stop the Spread / Management: Sanitation: Use certified disease-free seeds. Airflow: Prune out infected canopies.
+
+Botrytis Blight (Gray Mold)
+Category: Fungi
+
+Symptoms: Soft, brown decay on flowers, leaves, and fruit, quickly covered by a dense gray fuzzy mold.
+
+How it Travels / Spread Vector: Wind & Humidity: Airborne spores rapidly colonize dead or wounded tissue in highly humid, stagnant air.
+
+Chemical Treatment / Composition: Fenhexamid, Iprodione, Potassium bicarbonate.
+
+How to Stop the Spread / Management: Sanitation: Remove fading flowers and rotting fruit daily. Airflow: Drastically reduce greenhouse humidity.
+
+Sclerotinia (White Mold)
+Category: Fungi
+
+Symptoms: Water-soaked stem lesions covered in fluffy white mycelium. Hard, black, seed-like structures (sclerotia) form inside stems.
+
+How it Travels / Spread Vector: Soil & Wind: Soil-borne sclerotia produce mushrooms that release airborne spores during prolonged wet periods.
+
+Chemical Treatment / Composition: Boscalid, Thiophanate-methyl, Coniothyrium minitans (biological).
+
+How to Stop the Spread / Management: Airflow: Widen row spacing. Crop Rotation: Avoid rotating with susceptible broadleaf crops.
+
+Clubroot
+Category: Fungi (Plasmodiophorid)
+
+Symptoms: Severely stunted, yellowing plants that wilt on warm days. Roots are massively swollen, distorted, and club-like.
+
+How it Travels / Spread Vector: Soil & Water: Resting spores in soil swim in free soil water to infect root hairs. Spreads via muddy boots/tools.
+
+Chemical Treatment / Composition: PCNB (Pentachloronitrobenzene) applied to soil pre-planting.
+
+How to Stop the Spread / Management: Sanitation: Raise soil pH above 7.2 using agricultural lime. Clean tools meticulously.
+
+Apple Scab / Black Spot
+Category: Fungi
+
+Symptoms: Olive-green, velvety spots on leaves; dark, scabby spots on fruit (scab) or fringed black spots on leaves causing drop (black spot).
+
+How it Travels / Spread Vector: Wind & Water: Ascospores overwinter in fallen leaves and splash/blow onto new growth in spring rains.
+
+Chemical Treatment / Composition: Myclobutanil, Captan, Liquid Copper.
+
+How to Stop the Spread / Management: Sanitation: Rake and remove all fallen leaves in autumn. Prune for rapid canopy drying.
+
+Bacterial Leaf Spot
+Category: Bacteria
+
+Symptoms: Small, water-soaked spots that become angular as they hit leaf veins, often surrounded by a prominent yellow halo.
+
+How it Travels / Spread Vector: Water, Seeds & Humans: Spreads via splashing rain, contaminated seeds, and wet hands handling plants.
+
+Chemical Treatment / Composition: Copper-based bactericides (Copper ammonium carbonate), Streptomycin.
+
+How to Stop the Spread / Management: Sanitation: Disinfect tools with bleach. Avoid working in wet fields.
+
+Fire Blight
+Category: Bacteria
+
+Symptoms: Sudden wilting and blackening of blossoms and shoots. Infected shoots bend into a 'shepherd's crook'.
+
+How it Travels / Spread Vector: Insects & Rain: Spread in spring by pollinating insects (bees) moving between flowers, and splashing rain.
+
+Chemical Treatment / Composition: Streptomycin sulfate (applied during bloom), Copper hydroxide (dormant).
+
+How to Stop the Spread / Management: Sanitation: Prune branches 8-12 inches below visible damage during winter dormancy. Disinfect tools.
+
+Bacterial Wilt
+Category: Bacteria
+
+Symptoms: Sudden, severe wilting of green leaves. Cutting the stem reveals sticky white bacterial strands (ooze).
+
+How it Travels / Spread Vector: Insects & Soil: Lives in the gut of insects (e.g., cucumber beetles) and is transmitted when they feed.
+
+Chemical Treatment / Composition: Insecticides to control the vector (Pyrethrins, Spinosad). No chemical cure for the bacteria.
+
+How to Stop the Spread / Management: Sanitation: Destroy infected plants immediately. Control insect vectors with row covers.
+
+Crown Gall
+Category: Bacteria
+
+Symptoms: Rough, woody, tumor-like growths (galls) typically forming near the soil line or on roots.
+
+How it Travels / Spread Vector: Soil & Tools: Soil-borne bacteria insert DNA into plant cells through wounds (pruning, frost, insects).
+
+Chemical Treatment / Composition: Agrobacterium radiobacter strain K84 (biological control preventative). No chemical cure.
+
+How to Stop the Spread / Management: Sanitation: Inspect nursery stock. Avoid creating wounds near the soil line when weed-whacking.
+
+Citrus Canker
+Category: Bacteria
+
+Symptoms: Raised, corky, crater-like lesions with water-soaked margins and yellow halos on leaves, stems, and fruit.
+
+How it Travels / Spread Vector: Wind & Rain: Highly contagious via wind-driven rain (hurricanes/storms) and human movement of infected citrus.
+
+Chemical Treatment / Composition: Preventative liquid copper sprays.
+
+How to Stop the Spread / Management: Sanitation: Total quarantine and destruction of infected trees in commercial zones.
+
+Mosaic Viruses (TMV, CMV)
+Category: Virus
+
+Symptoms: Leaves show mottled, swirly patterns of light/dark green or yellow. Leaves may pucker or blister. Stunted growth.
+
+How it Travels / Spread Vector: Insects & Humans: Transmitted by sucking insects (aphids) or mechanically via hands and tobacco products.
+
+Chemical Treatment / Composition: No chemical cure. Insecticidal soaps or Neem oil to control aphid vectors.
+
+How to Stop the Spread / Management: Sanitation: Pull and destroy plants immediately. Wash hands with soap thoroughly.
+
+Spotted Wilt Virus (TSWV)
+Category: Virus
+
+Symptoms: Dark rings or spots on foliage. Leaves turn bronze. Fruits develop yellow/red concentric rings.
+
+How it Travels / Spread Vector: Insects: Transmitted almost exclusively by thrips that acquire the virus as larvae.
+
+Chemical Treatment / Composition: No cure. Spinosad or Beauveria bassiana to control the thrip population.
+
+How to Stop the Spread / Management: Sanitation: Keep areas weed-free. Monitor with sticky traps.
+
+Tomato Yellow Leaf Curl Virus (TYLCV)
+Category: Virus
+
+Symptoms: Leaves cup upward, becoming crumpled and distinctly yellow at the margins. Severe stunting; flowers drop without fruiting.
+
+How it Travels / Spread Vector: Insects: Transmitted exclusively by the Silverleaf Whitefly.
+
+Chemical Treatment / Composition: Imidacloprid or horticultural oils to manage the whitefly vector.
+
+How to Stop the Spread / Management: Sanitation: Use reflective UV mulches to disorient whiteflies. Plant resistant varieties.
+
+Rose Rosette Disease
+Category: Virus
+
+Symptoms: Rapid growth of thick, excessively thorny reddish stems. Leaves are deformed and highly clustered ('witches broom').
+
+How it Travels / Spread Vector: Insects & Wind: Carried by microscopic eriophyid mites that blow in the wind from infected plants.
+
+Chemical Treatment / Composition: Miticides (Horticultural oils, Spiromesifen) to control mites. No cure for the virus.
+
+How to Stop the Spread / Management: Sanitation: Dig up and bag the entire plant, including roots. Do not compost.
+
+Root-Knot Nematodes
+Category: Nematode (Micro-animal)
+
+Symptoms: Above ground: stunting, yellowing, and wilting despite adequate water. Below ground: roots covered in distinct bead-like galls/knots.
+
+How it Travels / Spread Vector: Soil & Water: Microscopic roundworms that travel through soil moisture, contaminated farm equipment, and muddy boots.
+
+Chemical Treatment / Composition: Nematicides (Oxamyl, Fluopyram) in commercial ag. Marigold root exudates (alpha-terthienyl) act as a natural deterrent.
+
+How to Stop the Spread / Management: Crop Rotation: Rotate with non-host grasses or heavy plantings of French Marigolds. Soil solarization.
+
+Nitrogen Deficiency
+Category: Abiotic (Nutrient)
+
+Symptoms: Overall stunting. Older, lower leaves turn uniformly pale green or yellow as nutrients move to new growth.
+
+How it Travels / Spread Vector: Soil: Depleted soil, nutrient leaching from heavy rain, or poor soil microbiology.
+
+Chemical Treatment / Composition: Ammonium nitrate, Urea, Blood meal.
+
+How to Stop the Spread / Management: Crop Rotation: Plant nitrogen-fixing legumes (peas, beans). Avoid extreme overwatering.
+
+Iron Chlorosis
+Category: Abiotic (Nutrient)
+
+Symptoms: Interveinal chlorosis primarily on new leaves: the leaf turns bright yellow, but the veins remain distinctly dark green.
+
+How it Travels / Spread Vector: Soil: High soil pH (alkaline) locks up iron, making it unavailable to roots.
+
+Chemical Treatment / Composition: Chelated Iron (EDDHA or EDTA) soil drenches or foliar sprays.
+
+How to Stop the Spread / Management: Soil Prep: Lower soil pH using elemental sulfur or peat moss.
+
+Potassium Deficiency
+Category: Abiotic (Nutrient)
+
+Symptoms: Edges (margins) of older leaves turn yellow, then brown and crispy. Stems may become weak.
+
+How it Travels / Spread Vector: Soil: Depletion in highly weathered or sandy soils.
+
+Chemical Treatment / Composition: Potassium sulfate (Sulfate of Potash), Kelp meal, Wood ashes.
+
+How to Stop the Spread / Management: Soil Prep: Incorporate potassium-rich organic matter. Maintain balanced soil moisture.
+
+Phosphorus Deficiency
+Category: Abiotic (Nutrient)
+
+Symptoms: Stunted growth. Leaves, especially undersides and veins, take on an unnatural dark green or purple/red tint.
+
+How it Travels / Spread Vector: Soil / Climate: Often occurs in cold, wet soils where roots cannot actively absorb phosphorus.
+
+Chemical Treatment / Composition: Bone meal, Rock phosphate, Superphosphate.
+
+How to Stop the Spread / Management: Soil Prep: Wait for soil to warm before planting. Ensure neutral pH.
+
+Blossom End Rot
+Category: Abiotic (Nutrient/Water)
+
+Symptoms: A dark, sunken, leathery patch forms at the bottom (blossom end) of fruits like tomatoes and peppers.
+
+How it Travels / Spread Vector: Water & Soil: Erratic watering prevents roots from taking up calcium.
+
+Chemical Treatment / Composition: Foliar Calcium Chloride sprays (temporary), adding Gypsum to soil.
+
+How to Stop the Spread / Management: Watering: Maintain deep, consistent soil moisture. Use organic mulch.
+
+Drought Stress / Underwatering
+Category: Abiotic (Water)
+
+Symptoms: Wilting during the heat of the day, dry and crispy leaf margins, premature leaf and flower drop.
+
+How it Travels / Spread Vector: Water / Climate: Lack of rainfall, high temperatures, or inadequate irrigation.
+
+Chemical Treatment / Composition: N/A. Avoid chemical fertilizers during drought.
+
+How to Stop the Spread / Management: Watering: Deep, infrequent watering to encourage deep roots. Apply thick mulch.
+
+Waterlogging / Root Suffocation
+Category: Abiotic (Water)
+
+Symptoms: Leaves turn yellow and soft. Plant wilts despite wet soil. Roots turn mushy and smell sour.
+
+How it Travels / Spread Vector: Water / Soil: Poor drainage, heavy clay soils, or excessive irrigation blocking oxygen.
+
+Chemical Treatment / Composition: Hydrogen peroxide (H2O2) soil drenches can temporarily oxygenate soil.
+
+How to Stop the Spread / Management: Watering: Stop watering immediately. Airflow/Soil: Aerate soil, use raised beds.
+
+Sunscald / Heat Stress
+Category: Abiotic (Heat)
+
+Symptoms: White, papery, or blistered patches on leaves and fruits suddenly exposed to direct intense sunlight.
+
+How it Travels / Spread Vector: Climate: Often caused by sudden loss of leaf canopy (over-pruning).
+
+Chemical Treatment / Composition: Kaolin clay sprays (Surround WP) can act as a physical sunblock.
+
+How to Stop the Spread / Management: Canopy: Do not over-prune during peak summer. Use shade cloth (30-50%).
+
+Fertilizer Burn / Salt Toxicity
+Category: Abiotic (Chemical)
+
+Symptoms: Leaf margins turn brown and crispy suddenly after feeding. White crust may appear on soil surface.
+
+How it Travels / Spread Vector: Human/Soil: Over-application of synthetic fertilizers causing a toxic build-up of salts in the root zone.
+
+Chemical Treatment / Composition: Heavy flushing with pure water to leach salts out of the root zone.
+
+How to Stop the Spread / Management: Watering: Always water soil before applying liquid fertilizers. Follow dosage rates exactly.
+
+Herbicide Burn / Chemical Drift
+Category: Abiotic (Chemical)
+
+Symptoms: Twisted, cupped, or strapped leaves. Sudden bleaching or yellowing of foliage in a localized drift pattern.
+
+How it Travels / Spread Vector: Wind & Humans: Airborne chemical drift from nearby spraying, or contaminated compost (aminopyralids).
+
+Chemical Treatment / Composition: Usually irreversible. Activated charcoal can sometimes absorb spills in soil.
+
+How to Stop the Spread / Management: Sanitation: Spray chemicals only on calm days. Know your compost source.
