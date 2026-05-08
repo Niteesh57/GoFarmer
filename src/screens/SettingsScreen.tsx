@@ -35,8 +35,30 @@ const MODELS: ModelInfo[] = [
   { id: 'gemma-4-e2b-it', name: 'Gemma 4 AI', size: '4.5 GB', status: 'not_downloaded', offline: false, version: '1.0', lastUsed: 'Never' },
 ];
 
-const APP_LANGUAGES = ['🇬🇧 English', '🇮🇳 हिंदी', '🇫🇷 Français', '🇪🇸 Español'];
-const CONTENT_LANGUAGES = ['🇮🇳 Hindi', '🇬🇧 English', '🇫🇷 Français', '🇪🇸 Español'];
+const APP_LANGUAGES = [
+  '🇬🇧 English',
+  '🇮🇳 हिंदी',
+  '🇪🇸 Español',
+  '🇫🇷 Français',
+  '🇨🇳 中文',
+  '🇯🇵 日本語',
+  '🇮🇳 తెలుగు',
+  '🇮🇳 ಕನ್ನಡ',
+  '🇸🇪 Svenska',
+  '🇩🇪 Deutsch'
+];
+const CONTENT_LANGUAGES = [
+  '🇮🇳 Hindi',
+  '🇬🇧 English',
+  '🇪🇸 Español',
+  '🇫🇷 Français',
+  '🇨🇳 Chinese',
+  '🇯🇵 Japanese',
+  '🇮🇳 Telugu',
+  '🇮🇳 Kannada',
+  '🇸🇪 Swedish',
+  '🇩🇪 German'
+];
 const TEMP_UNITS = ['°C Celsius', '°F Fahrenheit', 'K Kelvin'];
 
 interface SettingsScreenProps {
@@ -45,8 +67,8 @@ interface SettingsScreenProps {
 
 const STREAM_CHUNK_SIZE = 64000; // 2 seconds of 16 kHz mono 16-bit PCM bytes.
 const SPEECH_PEAK_THRESHOLD = 1000;
-const RAG_FILE_URL = 'https://raw.githubusercontent.com/Niteesh57/GoFarmer/main/vector/rag.txt';
-const RAG_FILE_PATH = '/data/local/tmp/gofarmer-vector/rag.txt';
+const RAG_FILE_URL = 'https://raw.githubusercontent.com/Niteesh57/GOFARMER/main/vector/rag.txt';
+const RAG_FILE_PATH = '/data/local/tmp/GOFARMER-vector/rag.txt';
 
 export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
   const { t, i18n } = useTranslation();
@@ -64,7 +86,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
     AsyncStorage.getItem('@content_lang').then(lang => {
       if (lang) setContentLang(lang);
     });
-    AsyncStorage.getItem('@gofarmer_app_lang_label').then(lang => {
+    AsyncStorage.getItem('@GOFARMER_app_lang_label').then(lang => {
       if (lang) setAppLang(lang);
     });
     AsyncStorage.getItem('@temp_unit').then(unit => {
@@ -117,7 +139,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
     });
 
     // 2. Load Saved Voice
-    AsyncStorage.getItem('@gofarmer_selected_voice').then(vid => {
+    AsyncStorage.getItem('@GOFARMER_selected_voice').then(vid => {
       if (vid) setSelectedVoiceId(vid);
     });
   }, []);
@@ -129,10 +151,14 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
       const filtered = allVoices.filter(v => v.language.toLowerCase().startsWith(code.split('-')[0].toLowerCase()));
       setAvailableVoices(filtered);
       
-      // If nothing selected yet, default to first available
-      if (!selectedVoiceId && filtered.length > 0) {
+      // Auto-select first available voice for the new language
+      if (filtered.length > 0) {
         setSelectedVoiceId(filtered[0].id);
-        AsyncStorage.setItem('@gofarmer_selected_voice', filtered[0].id);
+        AsyncStorage.setItem('@GOFARMER_selected_voice', filtered[0].id);
+        Tts.setDefaultVoice(filtered[0].id);
+      } else {
+        setSelectedVoiceId(null);
+        AsyncStorage.removeItem('@GOFARMER_selected_voice');
       }
     } catch (e) {
       console.log('Failed to load voices', e);
@@ -345,14 +371,16 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
     switch (pickerModal.type) {
       case 'appLang':
         setAppLang(value);
-        AsyncStorage.setItem('@gofarmer_app_lang_label', value);
+        AsyncStorage.setItem('@GOFARMER_app_lang_label', value);
         const code = getAppLangCode(value);
-        AsyncStorage.setItem('@gofarmer_language', code);
+        AsyncStorage.setItem('@GOFARMER_language', code);
         i18n.changeLanguage(code);
         break;
       case 'contentLang':
         setContentLang(value);
         AsyncStorage.setItem('@content_lang', value);
+        // Trigger voice reload for new language
+        loadVoicesForLang(value);
         break;
       case 'tempUnit':
         setTempUnit(value);
@@ -362,7 +390,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
         const voice = availableVoices.find(v => (v.name || v.id) === value);
         if (voice) {
           setSelectedVoiceId(voice.id);
-          AsyncStorage.setItem('@gofarmer_selected_voice', voice.id);
+          AsyncStorage.setItem('@GOFARMER_selected_voice', voice.id);
           Tts.setDefaultVoice(voice.id);
         }
         break;
@@ -432,7 +460,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
 
   return (
     <View style={[styles.flex, { backgroundColor: Colors.background }]}>
-      <TopAppBar title="GoFarmer" />
+      <TopAppBar title="GOFARMER" />
 
       <ScrollView style={styles.flex} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
@@ -573,7 +601,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
           <View style={styles.preferenceItem}>
             <Text style={styles.prefLabel}>{t('settings.active_crop')}</Text>
             <TouchableOpacity style={styles.prefSelect} onPress={() => setCropModalVisible(true)}>
-              <Text style={styles.prefValue}>
+              <Text style={[styles.prefValue, { flex: 1 }]} numberOfLines={1}>
                 {isCustomCrop ? (activeCrop || 'Custom Input') : activeCrop}
               </Text>
               <Text style={styles.prefArrow}>▼</Text>
@@ -608,7 +636,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
           <View style={styles.preferenceItem}>
             <Text style={styles.prefLabel}>{t('settings.app_lang')}</Text>
             <TouchableOpacity style={styles.prefSelect} onPress={() => openPicker('appLang', APP_LANGUAGES)}>
-              <Text style={styles.prefValue}>{appLang}</Text>
+              <Text style={[styles.prefValue, { flex: 1 }]} numberOfLines={1}>{appLang}</Text>
               <Text style={styles.prefArrow}>▼</Text>
             </TouchableOpacity>
           </View>
@@ -616,7 +644,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
           <View style={styles.preferenceItem}>
             <Text style={styles.prefLabel}>{t('settings.content_lang')}</Text>
             <TouchableOpacity style={styles.prefSelect} onPress={() => openPicker('contentLang', CONTENT_LANGUAGES)}>
-              <Text style={styles.prefValue}>{contentLang}</Text>
+              <Text style={[styles.prefValue, { flex: 1 }]} numberOfLines={1}>{contentLang}</Text>
               <Text style={styles.prefArrow}>▼</Text>
             </TouchableOpacity>
           </View>
@@ -628,7 +656,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
               onPress={() => openPicker('voice', availableVoices.map(v => v.name || v.id))}
               disabled={availableVoices.length === 0}
             >
-              <Text style={styles.prefValue}>
+              <Text style={[styles.prefValue, { flex: 1 }]} numberOfLines={1}>
                 {availableVoices.find(v => v.id === selectedVoiceId)?.name || (availableVoices.length > 0 ? 'Select Voice' : 'No voices found')}
               </Text>
               <Text style={styles.prefArrow}>▼</Text>
@@ -638,7 +666,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
           <View style={styles.preferenceItem}>
             <Text style={styles.prefLabel}>{t('settings.temp_unit')}</Text>
             <TouchableOpacity style={styles.prefSelect} onPress={() => openPicker('tempUnit', TEMP_UNITS)}>
-              <Text style={styles.prefValue}>{tempUnit}</Text>
+              <Text style={[styles.prefValue, { flex: 1 }]} numberOfLines={1}>{tempUnit}</Text>
               <Text style={styles.prefArrow}>▼</Text>
             </TouchableOpacity>
           </View>
@@ -700,7 +728,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
           <View style={[styles.modelCard, { backgroundColor: Colors.surfaceContainerLow, borderColor: Colors.outlineVariant, marginTop: 8 }]}>
             <View style={styles.modelTop}>
               <View style={styles.modelInfo}>
-                <Text style={[styles.modelName, { color: Colors.onSurface }]}>Agricultural RAG Index</Text>
+                <Text style={[styles.modelName, { color: Colors.onSurface }]}>{t('settings.rag_index')}</Text>
                 <Text style={[styles.modelSize, { color: Colors.onSurfaceVariant }]}>rag.txt</Text>
               </View>
               <View style={[styles.modelStatusBadge, {
@@ -712,7 +740,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
               </View>
             </View>
             <Text style={[styles.modelDesc, { marginTop: 8 }]}>
-              Local knowledge base for disease diagnosis and farming advice.
+              {t('settings.rag_desc')}
             </Text>
             <TouchableOpacity 
               style={[styles.outlineBtn, { marginTop: 12, borderColor: Colors.primary, backgroundColor: Colors.primaryContainer + '11' }]} 
@@ -723,7 +751,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
                 <ActivityIndicator size="small" color={Colors.primary} />
               ) : (
                 <Text style={[styles.outlineBtnText, { color: Colors.primary, fontWeight: '700', textAlign: 'center' }]}>
-                  {ragStatus === 'downloaded' ? 'Update Knowledge Base' : 'Download Knowledge Base'}
+                  {ragStatus === 'downloaded' ? t('settings.update_rag') : t('settings.download_rag')}
                 </Text>
               )}
             </TouchableOpacity>
@@ -734,7 +762,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionHeader}>ℹ {t('settings.about_support')}</Text>
           <Text style={styles.aboutText}>{t('settings.version')} 1.0.0  ·  Build: 20260503</Text>
-          <Text style={styles.aboutText}>{t('settings.developer')} GoFarmer Team</Text>
+          <Text style={styles.aboutText}>{t('settings.developer')} {t('settings.developer_name')}</Text>
 
           <View style={styles.aboutLinks}>
             {[`📖 ${t('settings.user_guide')}`].map(link => (
@@ -761,11 +789,22 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
               }
             </Text>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {pickerModal?.options.map(opt => (
-                <TouchableOpacity key={opt} style={styles.pickerOpt} onPress={() => selectOption(opt)}>
-                  <Text style={styles.pickerOptText}>{opt}</Text>
-                </TouchableOpacity>
-              ))}
+              {pickerModal?.options.map(opt => {
+                const isSelected = 
+                  pickerModal.type === 'appLang' ? opt === appLang :
+                  pickerModal.type === 'contentLang' ? opt === contentLang :
+                  pickerModal.type === 'tempUnit' ? opt === tempUnit :
+                  opt === selectedVoiceId || opt === availableVoices.find(v => v.id === selectedVoiceId)?.name;
+
+                return (
+                  <TouchableOpacity key={opt} style={styles.pickerOpt} onPress={() => selectOption(opt)}>
+                    <Text style={[styles.pickerOptText, { flex: 1 }]} numberOfLines={1}>{opt}</Text>
+                    {isSelected && (
+                      <Text style={{ color: Colors.primary, fontWeight: '700', marginLeft: 8 }}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -802,13 +841,13 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
             </View>
 
             <View style={styles.cropSection}>
-              <Text style={styles.cropCategoryHeader}>{t('common.select')} Mode</Text>
+              <Text style={styles.cropCategoryHeader}>{t('common.select')} {t('radio.topic')}</Text>
               <View style={styles.cropGrid}>
                 <TouchableOpacity
                   style={[styles.cropChip, isCustomCrop && styles.cropChipActive]}
                   onPress={() => handleSelectCrop('Custom')}
                 >
-                  <Text style={[styles.cropChipText, isCustomCrop && styles.cropChipTextActive]}>✨ Custom Input</Text>
+                  <Text style={[styles.cropChipText, isCustomCrop && styles.cropChipTextActive]}>✨ {t('settings.custom_input')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -955,7 +994,14 @@ const styles = StyleSheet.create({
   },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: Colors.outlineVariant, alignSelf: 'center', marginBottom: Spacing.md },
   pickerTitle: { ...Typography.titleMd, color: Colors.onSurface, marginBottom: Spacing.md },
-  pickerOpt: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant },
+  pickerOpt: { 
+    paddingVertical: 14, 
+    borderBottomWidth: 1, 
+    borderBottomColor: Colors.outlineVariant,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   pickerOptText: { ...Typography.bodyLg, color: Colors.onSurface },
 
   confirmOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: Spacing.xl },

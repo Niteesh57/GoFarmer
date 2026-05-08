@@ -1,5 +1,5 @@
 /**
- * GoFarmer — Multi-Screen React Native App
+ * GOFARMER — Multi-Screen React Native App
  *
  * Onboarding flow: Splash → Language → Main App (5-tab nav)
  * - Splash + Language shown only ONCE (saved to AsyncStorage)
@@ -35,6 +35,7 @@ import AIEyeScreen from './src/screens/AIEyeScreen';
 import DoubtsScreen from './src/screens/DoubtsScreen';
 import LLMRadioScreen from './src/screens/LLMRadioScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
 import { getInsights } from './src/services/InsightsService';
 import BottomTabBar, { TabName } from './src/navigation/BottomTabBar';
 import { Colors } from './src/theme/theme';
@@ -48,28 +49,32 @@ const FALLBACK_MODEL_PATH = Platform.select({
   default: '/data/local/tmp/gemma-4-e2b-it'
 });
 const CORPUS_PATH = Platform.select({
-  ios: 'gofarmer-vector',
-  android: '/data/local/tmp/gofarmer-vector',
-  default: '/data/local/tmp/gofarmer-vector'
+  ios: 'GOFARMER-vector',
+  android: '/data/local/tmp/GOFARMER-vector',
+  default: '/data/local/tmp/GOFARMER-vector'
 });
-const ONBOARDING_KEY = '@gofarmer_onboarding_done';
-const LANGUAGE_KEY = '@gofarmer_language';
+const ONBOARDING_KEY = '@GOFARMER_onboarding_done';
+const LANGUAGE_KEY = '@GOFARMER_language';
 
 
 const SYSTEM_PROMPT_WEATHER =
-  'You are an expert Agronomist. Analyze weather data and provide specific crop management advice. ' +
-  'Focus on irrigation, pest risks based on humidity/temp, and harvest timing.';
+  'You are a professional weather consultant for Indian farmers. ' +
+  'Provide highly accurate, direct agricultural advice based on weather context. ' +
+  'STRICT RULES: Keep answers to exactly 3-4 clear sentences. DO NOT use any Markdown formatting (*, #, _, etc.). ' +
+  'Use ONLY the NATIVE SCRIPT of the target language. No transliteration.';
 
 const SYSTEM_PROMPT_DOUBTS =
   'You are a friendly farm consultant. Answer farmer questions clearly and simply. ' +
   'Provide actionable steps for soil health, fertilizers, and general plant care.';
 
 const SYSTEM_PROMPT_RADIO =
-  'You are a GoFarmer Radio host. Create engaging, informative agricultural podcast scripts or summaries. ' +
+  'You are a GOFARMER Radio host. Create engaging, informative agricultural podcast scripts. ' +
+  'Keep it conversational but concise. Use ONLY the NATIVE SCRIPT of the target language. ' +
   'Use a warm, radio-like tone. Keep responses conversational and inspiring.';
 
 const SYSTEM_PROMPT_VISION =
   'You are a professional Plant Pathologist. Analyze leaf images and provide a diagnosis immediately. ' +
+  'Keep it VERY short. Use ONLY the NATIVE SCRIPT of the target language. ' +
   'Describe symptoms (color, spots, shape) and recommend treatments directly from your knowledge base. ' +
   'No preamble. No "thinking aloud".';
 
@@ -82,7 +87,7 @@ import DeviceInfo from 'react-native-device-info';
 let lm: CactusLM;
 
 // ── App Flow Type ─────────────────────────────────────────────────────────────
-type AppFlow = 'splash' | 'language' | 'main';
+type AppFlow = 'splash' | 'language' | 'onboarding' | 'main';
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App(): React.JSX.Element {
@@ -104,23 +109,28 @@ function AppContent() {
   const [modelReady, setModelReady] = useState(false);
   const [initializing, setInitializing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-
-  // Auto-update insights daily & load language
+  const [weatherData, setWeatherData] = useState<any>(null);
+  const [isWeatherLoading, setIsWeatherLoading] = useState(false);
+  // Restore language & Load weather data
   useEffect(() => {
-    // Restore app language on boot
     AsyncStorage.getItem(LANGUAGE_KEY).then(langCode => {
-      if (langCode) {
-        i18n.changeLanguage(langCode);
-      }
+      if (langCode) i18n.changeLanguage(langCode);
     }).catch(() => { });
 
-    // Delay to ensure Activity is attached
-    setTimeout(() => {
-      getInsights(false).catch(e => {
-        // completely swallow the error here so nothing bubbles up to the red box
-      });
-    }, 1000);
+    loadWeatherData();
   }, []);
+
+  const loadWeatherData = async (force = false) => {
+    setIsWeatherLoading(true);
+    try {
+      const data = await getInsights(force);
+      setWeatherData(data);
+    } catch (e) {
+      console.log('Failed to load global weather data:', e);
+    } finally {
+      setIsWeatherLoading(false);
+    }
+  };
 
 
   // ── Check if onboarding was already completed ──────────────────────────────
@@ -225,17 +235,14 @@ function AppContent() {
   }, []);
 
   // ── Handle language continue ───────────────────────────────────────────────
-  const handleLanguageContinue = useCallback(async (langCode: string) => {
-    try {
-      await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
-      await AsyncStorage.setItem(LANGUAGE_KEY, langCode);
-      i18n.changeLanguage(langCode);
-    } catch { }
-    setFlow('main');
-  }, []);
+  const handleLanguageContinue = useCallback((langCode: string) => {
+    i18n.changeLanguage(langCode);
+    AsyncStorage.setItem(LANGUAGE_KEY, langCode);
+    setFlow('onboarding');
+  }, [i18n]);
 
   // ── Weather specialized completion ───────────────────────────────────────
-  const llmCompleteWeather = useCallback(async (prompt: string, onToken?: (tok: string) => void): Promise<string> => {
+  const llmCompleteWeather = useCallback(async (prompt: string, onToken?: (tok: string) => void, audioData?: number[]): Promise<string> => {
     if (!modelReady) throw new Error('Model not ready');
     setIsGenerating(true);
     try {
@@ -244,7 +251,8 @@ function AppContent() {
           { role: 'system', content: SYSTEM_PROMPT_WEATHER },
           { role: 'user', content: prompt },
         ],
-        options: { temperature: 0.2, maxTokens: 512 },
+        audio: audioData,
+        options: { temperature: 0.4, maxTokens: 512 },
         onToken,
       });
       return result.response;
@@ -305,11 +313,13 @@ function AppContent() {
       `Language: ${lang.label}\n` +
       `CRITICAL REQUIREMENTS:\n` +
       `- USE ONLY PLAIN TEXT AND NUMBERS. NO MARKDOWN (no #, *, -, etc.).\n` +
+      `- USE ONLY THE NATIVE SCRIPT of the language (e.g., Telugu script for Telugu). NO transliteration.\n` +
       `- Use practical examples to help the farmer understand the concepts clearly.\n` +
+      `- Keep it concise and conversational.\n` +
       `- Start with a warm introduction.\n` +
       `- Provide actionable advice.\n` +
       `- End with a motivational close.\n` +
-      `Generate the full script now (PRACTICAL EXAMPLES ONLY, NO MARKDOWN):`;
+      `Generate the full script now (NATIVE SCRIPT ONLY, NO MARKDOWN):`;
 
     try {
       const response = await lm.complete({
@@ -349,10 +359,10 @@ function AppContent() {
 
       // Persist immediately in background
       try {
-        const stored = await AsyncStorage.getItem('gofarmer_podcasts');
+        const stored = await AsyncStorage.getItem('GOFARMER_podcasts');
         const list = stored ? JSON.parse(stored) : [];
         const newList = [newPodcast, ...list];
-        await AsyncStorage.setItem('gofarmer_podcasts', JSON.stringify(newList));
+        await AsyncStorage.setItem('GOFARMER_podcasts', JSON.stringify(newList));
       } catch (e) {
         console.error('Failed to persist background podcast', e);
       }
@@ -423,7 +433,15 @@ function AppContent() {
   const renderScreen = () => {
     switch (activeTab) {
       case 'weather':
-        return <WeatherScreen llmComplete={llmCompleteWeather} isLlmReady={modelReady} />;
+        return (
+          <WeatherScreen 
+            llmComplete={llmCompleteWeather} 
+            isLlmReady={modelReady} 
+            weatherDataProp={weatherData}
+            isLoadingProp={isWeatherLoading}
+            refreshWeather={() => loadWeatherData(true)}
+          />
+        );
       case 'aieye':
         return <AIEyeScreen llmComplete={llmCompleteVision} />;
       case 'doubts':
@@ -452,6 +470,10 @@ function AppContent() {
 
   if (flow === 'language') {
     return <LanguageScreen onContinue={handleLanguageContinue} />;
+  }
+
+  if (flow === 'onboarding') {
+    return <OnboardingScreen onComplete={() => setFlow('main')} />;
   }
 
   // ── Main App ───────────────────────────────────────────────────────────────

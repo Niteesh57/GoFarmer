@@ -71,16 +71,16 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
       // If moved more than ~500m (0.005 deg), move the static map anchor
       if (dist > 0.005) {
         setAnchorLocation(currentLocation);
-        AsyncStorage.setItem('@gofarmer_ai_anchor', JSON.stringify(currentLocation));
+        AsyncStorage.setItem('@GOFARMER_ai_anchor', JSON.stringify(currentLocation));
       }
     }
   }, [currentLocation, anchorLocation]);
 
   React.useEffect(() => {
-    AsyncStorage.getItem('@gofarmer_ai_scans').then(s => {
+    AsyncStorage.getItem('@GOFARMER_ai_scans').then(s => {
       if (s) setScans(JSON.parse(s));
     });
-    AsyncStorage.getItem('@gofarmer_ai_anchor').then(a => {
+    AsyncStorage.getItem('@GOFARMER_ai_anchor').then(a => {
       if (a) setAnchorLocation(JSON.parse(a));
     });
 
@@ -92,14 +92,14 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
   React.useEffect(() => {
     if (scans.length > 0 && scans !== MOCK_SCANS) {
-      AsyncStorage.setItem('@gofarmer_ai_scans', JSON.stringify(scans));
+      AsyncStorage.setItem('@GOFARMER_ai_scans', JSON.stringify(scans));
       
       // If no anchor yet, take the first (oldest) scan as anchor
       if (!anchorLocation) {
         const first = scans[scans.length - 1];
         if (first.rawLocation) {
           setAnchorLocation(first.rawLocation);
-          AsyncStorage.setItem('@gofarmer_ai_anchor', JSON.stringify(first.rawLocation));
+          AsyncStorage.setItem('@GOFARMER_ai_anchor', JSON.stringify(first.rawLocation));
         }
       }
     }
@@ -260,13 +260,13 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
       {/* MAIN AREA */}
       <View style={[styles.mapContainer, { backgroundColor: '#fdfdfd', flex: 1 }]}>
         <View style={{position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, backgroundColor: 'rgba(255,255,255,0.7)'}}>
-          <TopAppBar title="GoFarmer" rightLabel={t('common.history')} />
+          <TopAppBar title="GOFARMER" rightLabel={t('common.history')} />
         </View>
         
       {/* MAIN AREA */}
       <View style={[styles.mapContainer, { backgroundColor: '#fdfdfd', flex: 1, overflow: 'hidden' }]}>
         <View style={{position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, backgroundColor: 'rgba(255,255,255,0.7)'}}>
-          <TopAppBar title="GoFarmer" rightLabel={t('common.history')} />
+          <TopAppBar title="GOFARMER" rightLabel={t('common.history')} />
         </View>
         
         <View style={styles.staticMapArea}>
@@ -360,7 +360,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
                   </View>
                   <View style={styles.snapLabelSmall}>
                     <Text style={styles.snapLabelTextSmall} numberOfLines={1}>
-                      {cluster.length > 1 ? t('aieye.collection', {count: cluster.length, defaultValue: 'Collection'}) : (scan.disease || scan.plant)}
+                      {cluster.length > 1 ? t('aieye.collection', {count: cluster.length}) : (scan.disease || scan.plant)}
                     </Text>
                   </View>
                 </View>
@@ -379,13 +379,13 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
               style={[styles.toggleBtn, { paddingHorizontal: 20 }]} 
               onPress={() => handleScanPlant('camera')}
             >
-              <Text style={styles.toggleText}>📷 {t('aieye.scan_plant', {defaultValue: 'Scan Plant'})}</Text>
+              <Text style={styles.toggleText}>📷 {t('aieye.scan_plant')}</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.toggleBtn, { paddingHorizontal: 20 }]} 
               onPress={() => handleScanPlant('gallery')}
             >
-              <Text style={styles.toggleText}>🖼 {t('common.gallery', {defaultValue: 'Gallery'})}</Text>
+              <Text style={styles.toggleText}>🖼 {t('common.gallery')}</Text>
             </TouchableOpacity>
           </View>
           
@@ -401,7 +401,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
         <View style={styles.modalOverlay}>
           <View style={[styles.scanningModal, { alignItems: 'center', justifyContent: 'center', padding: Spacing.xl }]}>
             <ActivityIndicator size="large" color={Colors.primary} style={{ marginBottom: Spacing.md }} />
-            <Text style={styles.scanningTitle}>{t('aieye.analyzing_symptoms', {defaultValue: 'Scanning Plant...'})}</Text>
+            <Text style={styles.scanningTitle}>{t('aieye.analyzing_symptoms')}</Text>
           </View>
         </View>
       </Modal>
@@ -411,14 +411,14 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
         <View style={styles.modalOverlay}>
           <View style={[styles.resultSheet, { height: '80%' }]}>
              <View style={styles.scanningHeader}>
-               <Text style={styles.scanningTitle}>{t('common.history', {defaultValue: 'History'})}</Text>
+               <Text style={styles.scanningTitle}>{t('common.history')}</Text>
                <TouchableOpacity style={{marginLeft: 'auto'}} onPress={() => setHistoryVisible(false)}>
                  <Text style={{fontSize: 24, color: Colors.onSurfaceVariant}}>×</Text>
                </TouchableOpacity>
              </View>
              {scans.length === 0 ? (
                <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
-                 <Text style={{color: Colors.onSurfaceVariant}}>{t('common.no_data', {defaultValue: 'No scans yet'})}</Text>
+                 <Text style={{color: Colors.onSurfaceVariant}}>{t('common.no_data')}</Text>
                </View>
              ) : (
                <FlatList
@@ -458,7 +458,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
                 onPress={() => result && handleDeleteScan(result.id)}
                 style={{ paddingHorizontal: 12, paddingVertical: 6 }}
               >
-                <Text style={{fontSize: 16, color: Colors.error, fontWeight: '700'}}>{t('common.delete', {defaultValue: 'Delete'})}</Text>
+                <Text style={{fontSize: 16, color: Colors.error, fontWeight: '700'}}>{t('common.delete')}</Text>
               </TouchableOpacity>
             </View>
             {result && (
@@ -494,31 +494,31 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
                   <View style={styles.sheetContent}>
                     <View style={styles.resultMeta}>
                       <View style={styles.metaItem}>
-                        <Text style={styles.metaLabel}>{t('aieye.confidence', {defaultValue: 'Confidence'})}</Text>
+                        <Text style={styles.metaLabel}>{t('aieye.confidence')}</Text>
                         <Text style={styles.metaValue}>{result.confidence}%</Text>
                       </View>
                       <View style={styles.metaItem}>
-                        <Text style={styles.metaLabel}>{t('aieye.severity', {defaultValue: 'Severity'})}</Text>
+                        <Text style={styles.metaLabel}>{t('aieye.severity')}</Text>
                         <Text style={[styles.metaValue, { color: statusColor(result.status) }]}>{result.severity}%</Text>
                       </View>
                     </View>
 
                     {result.composition && (
                       <View style={styles.detailSection}>
-                        <Text style={styles.sectionTitle}>🧪 {t('aieye.initial_composition', {defaultValue: 'Chemical Composition'})}</Text>
+                        <Text style={styles.sectionTitle}>🧪 {t('aieye.initial_composition')}</Text>
                         <Text style={styles.sectionText}>{result.composition}</Text>
                       </View>
                     )}
 
                     {result.management && (
                       <View style={styles.detailSection}>
-                        <Text style={styles.sectionTitle}>🛡️ {t('aieye.management_plan', {defaultValue: 'Management Plan'})}</Text>
+                        <Text style={styles.sectionTitle}>🛡️ {t('aieye.management_plan')}</Text>
                         <Text style={styles.sectionText}>{result.management}</Text>
                       </View>
                     )}
 
                     <View style={styles.detailSection}>
-                      <Text style={styles.sectionTitle}>📋 {t('aieye.recommendations', {defaultValue: 'Recommendations'})}</Text>
+                      <Text style={styles.sectionTitle}>📋 {t('aieye.recommendations')}</Text>
                       {result.recommendations?.map((rec, i) => (
                         <View key={i} style={styles.recItem}>
                           <Text style={styles.recDot}>•</Text>
@@ -530,12 +530,12 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
                   <Text style={styles.resultRow}>📍 {t('aieye.location')}: <Text style={styles.resultValue}>{result.location}</Text></Text>
                   <Text style={styles.resultRow}>🕐 {t('aieye.time')}: <Text style={styles.resultValue}>{result.time}</Text></Text>
-                  <Text style={styles.resultRow}>🔎 {t('aieye.source')}: <Text style={[styles.resultValue, { color: Colors.secondary }]}>GoFarmer AI</Text></Text>
+                  <Text style={styles.resultRow}>🔎 {t('aieye.source')}: <Text style={[styles.resultValue, { color: Colors.secondary }]}>{t('common.ai_source')}</Text></Text>
                 </View>
 
                 <View style={styles.resultActions}>
                   <TouchableOpacity style={[styles.resultBtnSecondary, {borderColor: Colors.error}]} onPress={() => handleDeleteScan(result.id)}>
-                    <Text style={[styles.resultBtnSecondaryText, {color: Colors.error}]}>{t('common.delete', {defaultValue: 'Delete'})}</Text>
+                    <Text style={[styles.resultBtnSecondaryText, {color: Colors.error}]}>{t('common.delete')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.resultBtnPrimary} onPress={() => { setResult(null); showToast(t('common.done'), 'success'); }}>
                     <Text style={styles.resultBtnPrimaryText}>{t('common.done')} ✓</Text>
@@ -552,7 +552,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
         <View style={styles.modalOverlay}>
           <View style={[styles.resultSheet, { height: '60%' }]}>
             <View style={styles.scanningHeader}>
-              <Text style={styles.scanningTitle}>{t('aieye.select_scan', {defaultValue: 'Select Scan'})}</Text>
+              <Text style={styles.scanningTitle}>{t('aieye.select_scan')}</Text>
               <TouchableOpacity style={{marginLeft: 'auto'}} onPress={() => setSelectedCluster(null)}>
                 <Text style={{fontSize: 24, color: Colors.onSurfaceVariant}}>×</Text>
               </TouchableOpacity>
@@ -577,7 +577,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
                     <Text style={styles.scanTime}>{item.time}</Text>
                   </View>
                   <TouchableOpacity onPress={() => handleDeleteScan(item.id)} style={{padding: Spacing.sm}}>
-                    <Text style={{fontSize: 14, color: Colors.error, fontWeight: '600'}}>{t('common.delete', {defaultValue: 'Delete'})}</Text>
+                    <Text style={{fontSize: 14, color: Colors.error, fontWeight: '600'}}>{t('common.delete')}</Text>
                   </TouchableOpacity>
                 </TouchableOpacity>
               )}

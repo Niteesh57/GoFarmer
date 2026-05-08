@@ -1,4 +1,4 @@
-// GoFarmer Material Design 3 Design Tokens
+// GOFARMER Material Design 3 Design Tokens
 export const Colors = {
   // Primary (Green – Growth)
   primary: '#006e1c',

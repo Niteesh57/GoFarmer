@@ -25,9 +25,10 @@ const AGRI_SYSTEM_PROMPT =
   'You are an expert agricultural advisor AI assistant for Indian farmers. ' +
   'Provide clear, practical, and actionable farming advice in simple language. ' +
   'Focus on crops, weather, irrigation, pest management, fertilizers, and harvest timing. ' +
-  'Keep answers concise but complete.\n' +
+  'Keep answers VERY short and concise (maximum 2-3 sentences).\n' +
   'STRICT RULE: Do NOT use any Markdown formatting like asterisks (*), hashes (#), or bolding. ' +
-  'Use ONLY plain text (alphabets and numbers). Avoid all non-alphanumeric characters that interfere with voice reading.';
+  'Use ONLY the NATIVE SCRIPT of the target language. Do NOT use English letters or transliteration (e.g., use Devanagari for Hindi, Telugu script for Telugu, etc.). ' +
+  'Use ONLY plain text. Avoid all non-alphanumeric characters that interfere with voice reading.';
 
 const base64ToPcm = (b64: string): number[] => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -67,6 +68,12 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
   const [availableVoices, setAvailableVoices] = useState<any[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
 
+  useEffect(() => {
+    AsyncStorage.getItem('@GOFARMER_selected_voice').then(v => {
+      if (v) setSelectedVoice(v);
+    });
+  }, []);
+
   const audioChunksRef = useRef<string[]>([]);
 
   // -- Initialization --
@@ -89,7 +96,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
     const loadedSessions = await SessionService.getAllSessions();
     setSessions(loadedSessions);
 
-    const savedVoice = await AsyncStorage.getItem('@gofarmer_selected_voice');
+    const savedVoice = await AsyncStorage.getItem('@GOFARMER_selected_voice');
     if (savedVoice) {
       setSelectedVoice(savedVoice);
       Tts.setDefaultVoice(savedVoice);
@@ -149,7 +156,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
     setStreamingAnswer('');
     Tts.stop();
 
-    const userMsg: CactusLMMessage = { role: 'user', content: text || 'Voice Question' };
+    const userMsg: CactusLMMessage = { role: 'user', content: text || t('doubts.voice_question') };
 
     try {
       const savedLang = await AsyncStorage.getItem('@content_lang');
@@ -157,15 +164,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
       if (savedLang) {
         contentLangStr = savedLang.replace(/[^\w\s]/g, '').trim();
       } else {
-        try {
-          if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
-            contentLangStr = new Intl.DisplayNames(['en'], { type: 'language' }).of(i18n.language) || 'English';
-          } else {
-            contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
-          }
-        } catch (e) {
-          contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
-        }
+        contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
       }
 
       const ttsCode = getLangCode(contentLangStr);
@@ -208,7 +207,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
         if (!session) {
           // New session creation - use short title
           const rawTitle = text || finalAIResponse;
-          const sessionTitle = rawTitle.substring(0, 15).trim() || 'Session';
+          const sessionTitle = rawTitle.substring(0, 15).trim() || t('doubts.session');
 
           session = {
             id: Date.now().toString(),
@@ -266,7 +265,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
         isAnalyzing={isAnalyzing}
       />
       <Text style={styles.statusText}>
-        {isRecording ? t('doubts.listening') : isAnalyzing ? t('doubts.analyzing') : isSpeaking ? 'GoFarmer is Speaking...' : t('doubts.voice_desc')}
+        {isRecording ? t('doubts.listening') : isAnalyzing ? t('doubts.analyzing') : isSpeaking ? t('doubts.speaking') : t('doubts.voice_desc')}
       </Text>
     </View>
   );
@@ -379,8 +378,9 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
                   style={[styles.voiceItem, selectedVoice === item.id && styles.voiceItemActive]}
                   onPress={async () => {
                     setSelectedVoice(item.id);
-                    await AsyncStorage.setItem('@gofarmer_voice', item.id);
-                    Tts.speak("This is a sample of " + item.name);
+                    await AsyncStorage.setItem('@GOFARMER_selected_voice', item.id);
+                    Tts.setDefaultVoice(item.id);
+                    Tts.speak(t('doubts.voice_sample', { name: item.name }));
                   }}
                 >
                   <Text style={[styles.voiceItemName, selectedVoice === item.id && { color: Colors.primary }]}>{item.name}</Text>

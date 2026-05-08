@@ -12,10 +12,16 @@ interface Language {
 }
 
 const LANGUAGES: Language[] = [
-  { flag: '🇮🇳', label: 'हिंदी',    code: 'hi' },
   { flag: '🇬🇧', label: 'English',   code: 'en' },
-  { flag: '🇫🇷', label: 'Français',  code: 'fr' },
+  { flag: '🇮🇳', label: 'हिंदी',    code: 'hi' },
   { flag: '🇪🇸', label: 'Español',   code: 'es' },
+  { flag: '🇫🇷', label: 'Français',  code: 'fr' },
+  { flag: '🇨🇳', label: '中文',     code: 'zh' },
+  { flag: '🇯🇵', label: '日本語',    code: 'ja' },
+  { flag: '🇮🇳', label: 'తెలుగు',   code: 'te' },
+  { flag: '🇮🇳', label: 'ಕನ್ನಡ',    code: 'kn' },
+  { flag: '🇸🇪', label: 'Svenska',   code: 'sv' },
+  { flag: '🇩🇪', label: 'Deutsch',   code: 'de' },
 ];
 
 interface LanguageScreenProps {

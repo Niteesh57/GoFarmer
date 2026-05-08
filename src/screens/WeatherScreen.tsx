@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, StatusBar, Modal, TextInput
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, StatusBar, Modal, TextInput, PermissionsAndroid, Platform
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import AudioRecord from 'react-native-audio-record';
 import Tts from 'react-native-tts';
 import Markdown from 'react-native-markdown-display';
 import TopAppBar from '../components/TopAppBar';
+import { VoiceWaveform } from '../components/VoiceWaveform';
 import { Colors, Typography, Spacing, Radius } from '../theme/theme';
 import { getInsights } from '../services/InsightsService';
 import { getLangCode } from '../utils/langHelper';
@@ -30,6 +32,27 @@ const getWeatherText = (code: number, t: any) => {
   return t('weather.condition.cloudy', 'Cloudy');
 };
 
+const base64ToPcm = (b64: string): number[] => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) lookup[chars.charCodeAt(i)] = i;
+  let bufferLength = b64.length * 0.75;
+  if (b64[b64.length - 1] === '=') bufferLength--;
+  if (b64[b64.length - 2] === '=') bufferLength--;
+  const bytes = new Uint8Array(bufferLength);
+  let p = 0;
+  for (let i = 0; i < b64.length; i += 4) {
+    const enc1 = lookup[b64.charCodeAt(i)];
+    const enc2 = lookup[b64.charCodeAt(i + 1)];
+    const enc3 = lookup[b64.charCodeAt(i + 2)];
+    const enc4 = lookup[b64.charCodeAt(i + 3)];
+    bytes[p++] = (enc1 << 2) | (enc2 >> 4);
+    if (enc3 !== undefined && b64[i + 2] !== '=') bytes[p++] = ((enc2 & 15) << 4) | (enc3 >> 2);
+    if (enc4 !== undefined && b64[i + 3] !== '=') bytes[p++] = ((enc3 & 3) << 6) | enc4;
+  }
+  return Array.from(bytes);
+};
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CROPS_KEY = '@user_crops';
 const HISTORY_KEY = '@advisor_history_v2';
@@ -37,25 +60,31 @@ const ADVISORY_KEY = '@weather_advisory_v1';
 const DEFAULT_CROPS: string[] = [];
 
 interface WeatherScreenProps {
-  llmComplete?: (prompt: string, onToken?: (tok: string) => void) => Promise<string>;
+  llmComplete?: (prompt: string, onToken?: (tok: string) => void, audioData?: number[]) => Promise<string>;
   isLlmReady?: boolean;
+  weatherDataProp?: any;
+  isLoadingProp?: boolean;
+  refreshWeather?: () => void;
 }
 
-export default function WeatherScreen({ llmComplete, isLlmReady }: WeatherScreenProps) {
+export default function WeatherScreen({ 
+  llmComplete, 
+  isLlmReady, 
+  weatherDataProp, 
+  isLoadingProp, 
+  refreshWeather 
+}: WeatherScreenProps) {
   const { t, i18n } = useTranslation();
   const [crops, setCrops] = useState<string[]>(DEFAULT_CROPS);
   const [activeCrop, setActiveCrop] = useState('');
   const [detailModal, setDetailModal] = useState<string | null>(null);
 
-  const [weatherData, setWeatherData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [weatherData, setWeatherData] = useState<any>(weatherDataProp);
+  const [isLoading, setIsLoading] = useState(isLoadingProp && !weatherDataProp);
   const [error, setError] = useState<string | null>(null);
 
-  // Advisor state
-  const [searchCrop, setSearchCrop] = useState('');
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  // Consultant state
   const [isAdvising, setIsAdvising] = useState(false);
-  const [advisorHistory, setAdvisorHistory] = useState<any[]>([]);
   const [advisorResult, setAdvisorResult] = useState<string | null>(null);
   
   // Weekly/Long-term Advisory state
@@ -63,6 +92,23 @@ export default function WeatherScreen({ llmComplete, isLlmReady }: WeatherScreen
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   
   const scrollViewRef = useRef<ScrollView>(null);
+  const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [advisorHistory, setAdvisorHistory] = useState<any[]>([]);
+  const [searchCrop, setSearchCrop] = useState('');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const audioChunksRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (weatherDataProp) {
+      setWeatherData(weatherDataProp);
+    }
+  }, [weatherDataProp]);
+
+  useEffect(() => {
+    setIsLoading(!!isLoadingProp && !weatherDataProp);
+  }, [isLoadingProp, weatherDataProp]);
 
   const loadData = async (forceUpdate = false) => {
     setIsLoading(true);
@@ -83,11 +129,119 @@ export default function WeatherScreen({ llmComplete, isLlmReady }: WeatherScreen
   };
 
   useEffect(() => {
-    loadData();
+    AsyncStorage.getItem('@GOFARMER_selected_voice').then(v => {
+      if (v) setSelectedVoice(v);
+    });
+    
     loadCrops();
-    loadHistory();
     loadAdvisory();
+
+    const startListener = Tts.addEventListener('tts-start', () => setIsSpeaking(true));
+    const finishListener = Tts.addEventListener('tts-finish', () => setIsSpeaking(false));
+    const cancelListener = Tts.addEventListener('tts-cancel', () => setIsSpeaking(false));
+
+
+    return () => {
+      startListener.remove();
+      finishListener.remove();
+      cancelListener.remove();
+      Tts.stop();
+      AudioRecord.stop().catch(() => { });
+    };
   }, []);
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      setIsRecording(true); // Keep UI in recording state for a moment
+      const audioFile = await AudioRecord.stop();
+      setIsRecording(false);
+      
+      const fullB64 = audioChunksRef.current.join('');
+      const pcmData = base64ToPcm(fullB64);
+      audioChunksRef.current = [];
+
+      if (pcmData.length < 100) {
+        return;
+      }
+
+      setIsAdvising(true);
+      setAdvisorResult('');
+      Tts.stop();
+
+      try {
+        const timeseries = weatherData?.timeseries?.daily || {};
+        const weatherSummary = timeseries.dates?.slice(0, 7).map((d: string, i: number) => 
+          `${d}: Max ${timeseries.temp_max[i]}°C, Rain ${timeseries.rainfall[i]}mm, Wind ${timeseries.wind_speed[i]}km/h`
+        ).join('; ');
+
+        const savedLang = await AsyncStorage.getItem('@content_lang');
+        let contentLangStr = 'English';
+        if (savedLang) {
+          contentLangStr = savedLang.replace(/[^\w\s]/g, '').trim();
+        } else {
+          contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
+        }
+
+        const prompt = `Context:
+- Active Crop: ${activeCrop || 'General Farm'}
+- 7-Day Weather: ${weatherSummary}
+
+The farmer is asking for advice via voice. Answer in ${contentLangStr}.`;
+
+        let ttsBuffer = '';
+        let isFirstToken = true;
+
+        const response = await llmComplete?.(prompt, (token) => {
+          if (isFirstToken) {
+            setIsAdvising(false);
+            isFirstToken = false;
+          }
+          setAdvisorResult(prev => (prev || '') + token);
+          ttsBuffer += token;
+          if (/[.,!?\n]/.test(token) || ttsBuffer.length > 50) {
+            const chunkToSpeak = ttsBuffer.trim().replace(/[*#_~]/g, '');
+            if (chunkToSpeak.length > 1) {
+              Tts.speak(chunkToSpeak);
+            }
+            ttsBuffer = '';
+          }
+        }, pcmData);
+        
+        if (ttsBuffer.trim().length > 1) Tts.speak(ttsBuffer.trim().replace(/[*#_~]/g, ''));
+
+      } catch (err) {
+        console.error('Advisor Error:', err);
+      } finally {
+        setIsAdvising(false);
+      }
+    } else {
+      if (Platform.OS === 'android') {
+        try {
+          const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            console.log('Microphone permission denied');
+            return;
+          }
+        } catch (err) {
+          console.warn(err);
+          return;
+        }
+      }
+      
+      audioChunksRef.current = [];
+      try {
+        AudioRecord.init({ sampleRate: 16000, channels: 1, bitsPerSample: 16, audioSource: 1 });
+        await new Promise(r => setTimeout(r, 100));
+        await AudioRecord.start();
+        setIsRecording(true);
+        AudioRecord.on('data', (data) => {
+          audioChunksRef.current.push(data);
+        });
+      } catch (e) {
+        console.error('Failed to start recording:', e);
+      }
+    }
+  };
 
   const loadCrops = async () => {
     try {
@@ -121,9 +275,9 @@ export default function WeatherScreen({ llmComplete, isLlmReady }: WeatherScreen
     } catch (e) {}
   };
 
-  const getNext16Days = () => {
+  const getNext7Days = () => {
     if (!weatherData?.timeseries?.daily?.dates) return [];
-    return weatherData.timeseries.daily.dates.slice(0, 16);
+    return weatherData.timeseries.daily.dates.slice(0, 7);
   };
 
   const handleGenerateAdvisory = async () => {
@@ -135,8 +289,8 @@ export default function WeatherScreen({ llmComplete, isLlmReady }: WeatherScreen
 
     try {
       const timeseries = weatherData?.timeseries?.daily || {};
-      const weatherSummary = timeseries.dates?.slice(0, 16).map((d: string, i: number) => 
-        `${d}: Max ${timeseries.temp_max[i]}°C, Rain ${timeseries.rainfall[i]}mm`
+      const weatherSummary = timeseries.dates?.slice(0, 7).map((d: string, i: number) => 
+        `${d}: Max ${timeseries.temp_max[i]}°C, Rain ${timeseries.rainfall[i]}mm, Wind ${timeseries.wind_speed[i]}km/h (Gusts ${timeseries.wind_gusts[i]}km/h)`
       ).join('; ');
 
       const savedLang = await AsyncStorage.getItem('@content_lang');
@@ -158,14 +312,16 @@ export default function WeatherScreen({ llmComplete, isLlmReady }: WeatherScreen
       }
       
       const prompt = `You are a professional agronomist. The user has a ${activeCrop || 'general'} farm. 
-Here is the 16-day weather forecast: ${weatherSummary}.
+Here is the 7-day weather forecast: ${weatherSummary}.
 
-Create a detailed, day-by-day agricultural advisory plan for the next 16 days.
-Include:
-1. Specific dates when specific farm actions (planting, harvesting, weeding) are ideal.
-2. CRITICAL WARNINGS: Identify dates with high rain risk where spraying pesticides or irrigation should be AVOIDED.
-3. Safeguarding tips: How to protect the ${activeCrop || 'crops'} based on the specific temperature and rain trends.
-4. Keep the tone helpful and professional.
+Create a concise agricultural advisory plan for ONLY the next 7 days.
+Focus on:
+1. **Weekly Outlook**: What are the "good things" or opportunities this week?
+2. **Specific Actions**: What should the farmer be doing each day?
+3. **Risk Analysis for ${activeCrop || 'Crops'}**: If the farmer has ${activeCrop || 'crops'} (like tomatoes), what are the specific risks (e.g., wind, pests, rain)?
+4. **Environmental Readiness**: Will the farmer be ready for upcoming changes? Analyze wind, drastic temperature shifts, or other hazards.
+5. **Issues & Timeframe**: Identify any specific issues and exactly when they will occur.
+6. Keep the response concise, actionable, and professional.
 
 Respond ENTIRELY in ${contentLangStr}. Use Markdown for formatting.`;
 
@@ -202,8 +358,8 @@ Respond ENTIRELY in ${contentLangStr}. Use Markdown for formatting.`;
 
     try {
       const timeseries = weatherData?.timeseries?.daily || {};
-      const weatherSummary = timeseries.dates?.slice(0, 16).map((d: string, i: number) => 
-        `${d}: Max ${timeseries.temp_max[i]}°C, Rain ${timeseries.rainfall[i]}mm`
+      const weatherSummary = timeseries.dates?.slice(0, 7).map((d: string, i: number) => 
+        `${d}: Max ${timeseries.temp_max[i]}°C, Rain ${timeseries.rainfall[i]}mm, Wind ${timeseries.wind_speed[i]}km/h`
       ).join('; ');
 
       const savedLang = await AsyncStorage.getItem('@content_lang');
@@ -222,10 +378,14 @@ Respond ENTIRELY in ${contentLangStr}. Use Markdown for formatting.`;
         }
       }
       const ttsCode = getLangCode(contentLangStr);
-      await Tts.setDefaultLanguage(ttsCode);
+      if (selectedVoice) {
+        await Tts.setDefaultVoice(selectedVoice);
+      } else {
+        await Tts.setDefaultLanguage(ttsCode);
+      }
 
       const prompt = `You are an expert technical farmer adviser. The user wants to plant ${searchCrop} on ${selectedDate}. 
-Here is the daily weather data for the region over the next 16 days:
+Here is the daily weather data for the region over the next 7 days:
 ${weatherSummary}
 
 Is this crop suitable for this weather and region? If not, suggest a suitable plant which suits the situation.
@@ -289,12 +449,12 @@ CRITICAL RULES:
         <TopAppBar />
         <View style={[styles.flex, { justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }]}>
           <Text style={{ fontSize: 48, marginBottom: 16 }}>📡</Text>
-          <Text style={{ ...Typography.titleMd, color: Colors.onBackground, marginBottom: 10 }}>Farm Insights Offline</Text>
+          <Text style={{ ...Typography.titleMd, color: Colors.onBackground, marginBottom: 10 }}>{t('weather.offline_title')}</Text>
           <Text style={{ ...Typography.bodyMd, color: Colors.onSurfaceVariant, textAlign: 'center', marginBottom: 20 }}>
-            Unable to connect to the Insights API and no cached data is available yet. Please check your internet connection.
+            {t('weather.offline_desc')}
           </Text>
-          <TouchableOpacity style={{ paddingHorizontal: 20, paddingVertical: 12, backgroundColor: Colors.primary, borderRadius: Radius.full }} onPress={() => loadData(true)}>
-            <Text style={{ color: Colors.onPrimary, fontWeight: 'bold' }}>Try Again</Text>
+          <TouchableOpacity style={{ paddingHorizontal: 20, paddingVertical: 12, backgroundColor: Colors.primary, borderRadius: Radius.full }} onPress={refreshWeather || (() => loadData(true))}>
+            <Text style={{ color: Colors.onPrimary, fontWeight: 'bold' }}>{t('common.retry')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -342,8 +502,8 @@ CRITICAL RULES:
     };
   }) || [];
 
-  // Build dynamic temp trend (16 days)
-  const dynamicTempTrend = dates.slice(0, 16).map((dateStr: string, idx: number) => {
+  // Build dynamic temp trend (7 days)
+  const dynamicTempTrend = dates.slice(0, 7).map((dateStr: string, idx: number) => {
     const high = timeseries.temp_max[idx] || 0;
     const low = timeseries.temp_min[idx] || 0;
     const minRange = 10;
@@ -429,7 +589,7 @@ CRITICAL RULES:
         <View style={styles.titleRow}>
           <View style={styles.titleLeft}>
             <Text style={styles.pageTitle}>{t('weather.title')}</Text>
-            <TouchableOpacity style={styles.refreshBtn} onPress={() => loadData(true)}>
+            <TouchableOpacity style={styles.refreshBtn} onPress={refreshWeather || (() => loadData(true))}>
               <Text style={{ fontSize: 16 }}>↻</Text>
             </TouchableOpacity>
           </View>
@@ -561,7 +721,7 @@ CRITICAL RULES:
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>{t('weather.soil_conditions')}</Text>
             {!isDataToday && (
-              <TouchableOpacity style={styles.updateInlineBtn} onPress={() => loadData(true)}>
+              <TouchableOpacity style={styles.updateInlineBtn} onPress={refreshWeather || (() => loadData(true))}>
                 <Text style={styles.updateInlineText}>⚠️ {t('common.retry')}</Text>
               </TouchableOpacity>
             )}
@@ -591,7 +751,7 @@ CRITICAL RULES:
                 </View>
               </View>
               <View style={styles.soilItem}>
-                <Text style={styles.soilIcon}>☁️</Text>
+                <Text style={styles.soilIcon}></Text>
                 <View style={styles.flexShrink}>
                   <Text style={styles.soilLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{t('weather.evapotranspiration')}</Text>
                   <Text style={styles.soilValue} numberOfLines={1} adjustsFontSizeToFit>{todayET0.toFixed(2)} {t('weather.mm')}</Text>
@@ -614,9 +774,9 @@ CRITICAL RULES:
             </View>
           ) : (
             <View style={styles.staleContainer}>
-              <Text style={styles.staleText}>Today's soil data is not yet available for your region.</Text>
+              <Text style={styles.staleText}>{t('weather.stale_soil_data')}</Text>
               <TouchableOpacity style={styles.bigUpdateBtn} onPress={() => loadData(true)}>
-                <Text style={styles.bigUpdateBtnText}>Update Now</Text>
+                <Text style={styles.bigUpdateBtnText}>{t('settings.update')}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -649,29 +809,29 @@ CRITICAL RULES:
           </View>
         </View>
 
-        {/* 16-day temp trend */}
+        {/* 7-day temp trend */}
         <View style={styles.chartCard}>
           <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>{t('weather.temp_trend', {defaultValue: '16-Day Temp Trend'})}</Text>
+            <Text style={styles.chartTitle}>{t('weather.temp_trend', {defaultValue: '7-Day Temp Trend'})}</Text>
             <Text style={{ fontSize: 16 }}>📉</Text>
           </View>
           <View style={styles.trendChart}>
             <View style={styles.trendBarsContainer}>
-              {dynamicTempTrend.map((t, i) => (
-                <View key={i} style={styles.trendBarTrack}>
-                  <View style={[styles.trendBarFill, {
-                    bottom: `${t.bottom}%`,
-                    height: `${t.height}%`,
-                    backgroundColor: t.isToday ? Colors.primary : 'rgba(0,0,0,0.1)',
-                  }]} />
-                  {t.isToday && (
-                    <>
-                      <Text style={[styles.trendValueLabel, { bottom: `${t.bottom + t.height}%` }]}>{Math.round(todayMaxTemp)}°</Text>
-                      <Text style={[styles.trendValueLabel, { bottom: `${t.bottom - 15}%` }]}>{Math.round(todayMinTemp)}°</Text>
-                    </>
-                  )}
-                </View>
-              ))}
+              {dynamicTempTrend.map((t, i) => {
+                const high = Math.round(timeseries.temp_max[i]);
+                const low = Math.round(timeseries.temp_min[i]);
+                return (
+                  <View key={i} style={styles.trendBarTrack}>
+                    <View style={[styles.trendBarFill, {
+                      bottom: `${t.bottom}%`,
+                      height: `${t.height}%`,
+                      backgroundColor: t.isToday ? Colors.primary : 'rgba(0,0,0,0.1)',
+                    }]} />
+                    <Text style={[styles.trendValueLabel, { bottom: `${t.bottom + t.height + 2}%`, fontSize: 9 }]}>{high}°</Text>
+                    <Text style={[styles.trendValueLabel, { bottom: `${t.bottom - 12}%`, fontSize: 9 }]}>{low}°</Text>
+                  </View>
+                );
+              })}
             </View>
             <View style={styles.trendOverlay}>
               <Text style={styles.trendLabel}>{t('weather.historical_view')}</Text>
@@ -684,70 +844,52 @@ CRITICAL RULES:
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: 'rgba(0,0,0,0.1)', borderRadius: 2 }]} />
-              <Text style={styles.legendText}>30-Day Range</Text>
+              <Text style={styles.legendText}>{t('weather.historical_range')}</Text>
             </View>
           </View>
         </View>
 
-        {/* AI Advisor Section */}
+        {/* Weather Consultant Section */}
         <View style={styles.advisorCard}>
-          <Text style={styles.sectionTitle}>{t('advisor.title')}</Text>
-          <Text style={styles.advisorDesc}>{t('advisor.desc')}</Text>
-          
-          <TextInput
-            style={styles.input}
-            placeholder={t('advisor.placeholder')}
-            placeholderTextColor={Colors.onSurfaceVariant}
-            value={searchCrop}
-            onChangeText={setSearchCrop}
-          />
+          <View style={styles.advisorHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>{t('advisor.consultant_title', 'Weather Consultant')}</Text>
+              <Text style={styles.advisorDesc}>{t('advisor.consultant_desc', 'Ask about planting or spraying based on weather.')}</Text>
+            </View>
+          </View>
 
-          <Text style={styles.subLabel}>Select Planting Date:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dateScroll}>
-            {getNext16Days().map((d: string) => (
-              <TouchableOpacity
-                key={d}
-                style={[styles.dateChip, selectedDate === d && styles.dateChipActive]}
-                onPress={() => setSelectedDate(d)}
-              >
-                <Text style={[styles.dateChipText, selectedDate === d && styles.dateChipTextActive]}>
-                  {new Date(d).toLocaleDateString(i18n.language === 'hi' ? 'hi-IN' : 'en-US', { month: 'short', day: 'numeric' })}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <View style={styles.consultantActionRow}>
+            <TouchableOpacity 
+              style={[styles.voiceBtn, isRecording && styles.voiceBtnActive]} 
+              onPress={toggleRecording}
+              disabled={!isLlmReady || isAdvising}
+            >
+              <Text style={styles.voiceBtnIcon}>{isRecording ? '⏹' : '🎙'}</Text>
+            </TouchableOpacity>
+            
+            <View style={styles.statusInfo}>
+              <Text style={styles.statusLabel}>
+                {isRecording ? t('doubts.listening') : isAdvising ? t('doubts.analyzing') : isSpeaking ? t('doubts.speaking') : t('doubts.voice_desc')}
+              </Text>
+              {isAdvising && <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 4, alignSelf: 'flex-start' }} />}
+              {isSpeaking && <VoiceWaveform isSpeaking={isSpeaking} />}
+            </View>
+          </View>
 
-          <TouchableOpacity 
-            style={[styles.askBtn, (!isLlmReady || isAdvising) && styles.askBtnDisabled]} 
-            onPress={handleAskAdvisor}
-            disabled={!isLlmReady || isAdvising}
-          >
-            {isAdvising ? (
-              <ActivityIndicator color={Colors.onPrimary} size="small" />
-            ) : (
-              <Text style={styles.askBtnText}>{t('advisor.ask')}</Text>
-            )}
-          </TouchableOpacity>
+          {advisorResult ? (
+            <View style={styles.resultBox}>
+              <Text style={styles.advisorResultText}>
+                {advisorResult.replace(/[*#_~]/g, '')}
+              </Text>
+            </View>
+          ) : !isRecording && !isAdvising && !isSpeaking && (
+             <Text style={styles.placeholderText}>
+               {t('advisor.voice_placeholder', 'Tap the mic and ask: "Is it a good time to spray pesticides today?"')}
+             </Text>
+          )}
 
           {!isLlmReady && (
             <Text style={styles.warningText}>{t('advisor.loading')}</Text>
-          )}
-
-          {advisorHistory.length > 0 && (
-            <View style={{ marginTop: Spacing.lg }}>
-              <Text style={styles.resultTitle}>{t('advisor.latest_reports')}</Text>
-              {advisorHistory.map((item) => (
-                <View key={item.id} style={styles.resultBox}>
-                  <View style={styles.resultHeader}>
-                    <Text style={styles.resultCrop}>{item.crop}</Text>
-                    <Text style={styles.resultDate}>{new Date(item.date).toLocaleDateString()}</Text>
-                  </View>
-                  <Markdown style={markdownStyles}>
-                    {item.result}
-                  </Markdown>
-                </View>
-              ))}
-            </View>
           )}
         </View>
       </ScrollView>
@@ -983,7 +1125,7 @@ const styles = StyleSheet.create({
   trendBarsContainer: { flexDirection: 'row', alignItems: 'flex-end', height: '100%', gap: 2, paddingHorizontal: 4, paddingVertical: 20 },
   trendBarTrack: { flex: 1, height: '100%', justifyContent: 'flex-end', position: 'relative' },
   trendBarFill: { width: '100%', borderRadius: 1, position: 'absolute' },
-  trendValueLabel: { position: 'absolute', width: 40, left: -15, textAlign: 'center', fontSize: 10, fontWeight: 'bold', color: Colors.primary },
+  trendValueLabel: { position: 'absolute', width: '100%', left: 0, textAlign: 'center', fontSize: 9, fontWeight: '600', color: Colors.onSurfaceVariant },
   trendOverlay: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' },
   trendLabel: { ...Typography.labelMd, color: Colors.onSurfaceVariant, backgroundColor: 'rgba(255,255,255,0.7)', paddingHorizontal: 8, borderRadius: 4 },
   trendLegend: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.sm },
@@ -1023,40 +1165,56 @@ const styles = StyleSheet.create({
     borderColor: Colors.primaryContainer,
     marginTop: Spacing.md,
   },
+  advisorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   advisorDesc: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, marginBottom: Spacing.md },
-  input: {
+  
+  consultantActionRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: Spacing.md,
     backgroundColor: Colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
-    borderRadius: Radius.md,
     padding: Spacing.md,
-    ...Typography.bodyLg,
-    color: Colors.onSurface,
-    marginBottom: Spacing.md,
-  },
-  subLabel: { ...Typography.labelLg, color: Colors.onSurface, marginBottom: Spacing.xs },
-  dateScroll: { marginBottom: Spacing.lg, marginHorizontal: -Spacing.lg, paddingHorizontal: Spacing.lg },
-  dateChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    backgroundColor: Colors.surfaceContainer,
-    borderRadius: Radius.full,
-    marginRight: Spacing.sm,
+    borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.outlineVariant,
   },
-  dateChipActive: { backgroundColor: Colors.primaryContainer, borderColor: Colors.primary },
-  dateChipText: { ...Typography.labelMd, color: Colors.onSurface },
-  dateChipTextActive: { color: Colors.onPrimaryContainer, fontWeight: '700' },
-  askBtn: {
+  voiceBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingVertical: Spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 4,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
   },
-  askBtnDisabled: { opacity: 0.6 },
-  askBtnText: { ...Typography.labelLg, color: Colors.onPrimary, fontWeight: '700' },
+  voiceBtnActive: {
+    backgroundColor: Colors.error,
+    transform: [{ scale: 1.1 }],
+  },
+  voiceBtnIcon: {
+    fontSize: 28,
+    color: Colors.onPrimary,
+  },
+  statusInfo: {
+    flex: 1,
+  },
+  statusLabel: {
+    ...Typography.labelLg,
+    color: Colors.onSurface,
+    fontWeight: '600',
+  },
+  placeholderText: {
+    ...Typography.bodySm,
+    color: Colors.onSurfaceVariant,
+    fontStyle: 'italic',
+    marginTop: Spacing.md,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
   warningText: { ...Typography.labelSm, color: Colors.error, marginTop: Spacing.sm, textAlign: 'center' },
   resultBox: {
     marginTop: Spacing.md,
@@ -1071,11 +1229,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  resultTitle: { ...Typography.titleSm, color: Colors.onSurface, marginBottom: Spacing.xs },
-  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant, paddingBottom: 4 },
-  resultCrop: { ...Typography.labelLg, color: Colors.primary, fontWeight: '700' },
-  resultDate: { ...Typography.labelMd, color: Colors.onSurfaceVariant },
-  resultText: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, lineHeight: 22 },
+  advisorResultText: {
+    ...Typography.bodyMd,
+    color: Colors.onSurface,
+    lineHeight: 24,
+  },
 });
 
 const markdownStyles = StyleSheet.create({

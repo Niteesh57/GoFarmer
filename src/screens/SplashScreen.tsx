@@ -72,7 +72,7 @@ export default function SplashScreen({ onDone }: SplashScreenProps) {
 
       {/* Text */}
       <Animated.View style={{ opacity: textOpacity, alignItems: 'center', marginTop: Spacing.lg }}>
-        <Text style={styles.headline}>GoFarmer</Text>
+        <Text style={styles.headline}>GOFARMER</Text>
         <Text style={styles.subtitle}>{t('splash.subtitle')}</Text>
       </Animated.View>
 

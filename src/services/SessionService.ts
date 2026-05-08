@@ -8,7 +8,7 @@ export interface ChatSession {
   timestamp: number;
 }
 
-const SESSIONS_KEY = '@gofarmer_sessions';
+const SESSIONS_KEY = '@GOFARMER_sessions';
 
 export const SessionService = {
   async getAllSessions(): Promise<ChatSession[]> {

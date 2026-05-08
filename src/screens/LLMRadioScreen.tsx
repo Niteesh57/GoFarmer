@@ -13,7 +13,7 @@ import AudioRecord from 'react-native-audio-record';
 import { OrbAnimation } from '../components/OrbAnimation';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const STORAGE_KEY = '@gofarmer_podcasts';
+const STORAGE_KEY = '@GOFARMER_podcasts';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PodcastItem {
@@ -57,16 +57,22 @@ const base64ToPcm = (b64: string): number[] => {
 
 // ─── Options ──────────────────────────────────────────────────────────────────
 const LANGUAGES = [
-  { label: '🇮🇳 Hindi', code: 'hi-IN' },
-  { label: '🇬🇧 English', code: 'en-IN' },
+  { label: '🇬🇧 English', code: 'en-US' },
+  { label: '🇮🇳 हिंदी', code: 'hi-IN' },
+  { label: '🇪🇸 Español', code: 'es-ES' },
   { label: '🇫🇷 Français', code: 'fr-FR' },
-  { label: '🇪🇸 Español', code: 'es-ES' }
+  { label: '🇨🇳 中文', code: 'zh-CN' },
+  { label: '🇯🇵 日本語', code: 'ja-JP' },
+  { label: '🇮🇳 తెలుగు', code: 'te-IN' },
+  { label: '🇮🇳 ಕನ್ನಡ', code: 'kn-IN' },
+  { label: '🇸🇪 Svenska', code: 'sv-SE' },
+  { label: '🇩🇪 Deutsch', code: 'de-DE' }
 ];
 const STYLES = ['Educational', 'Quick Tips', 'Story Format', 'Interview (Q&A)'];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, startRadioGeneration }: LLMRadioScreenProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [podcasts, setPodcasts] = useState<PodcastItem[]>([]);
   const [featured, setFeatured] = useState<PodcastItem | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -76,7 +82,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
 
   // Form state
   const [topic, setTopic] = useState('');
-  const [language, setLanguage] = useState(LANGUAGES[1]); // Default to English
+  const [language, setLanguage] = useState(LANGUAGES[0]); // Default to English
   const [style, setStyle] = useState(STYLES[0]);
 
   // Voices
@@ -122,15 +128,30 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
         const vs = await Tts.voices();
         setVoices(vs);
         
-        const savedVoice = await AsyncStorage.getItem('@gofarmer_selected_voice');
+        const savedVoice = await AsyncStorage.getItem('@GOFARMER_selected_voice');
         if (savedVoice) {
           setSelectedVoice(savedVoice);
           Tts.setDefaultVoice(savedVoice);
         } else if (vs.length > 0) {
           setSelectedVoice(vs[0].id);
         }
+        
+        // Language init: Pre-select based on saved preference or app locale
+        const savedLang = await AsyncStorage.getItem('@content_lang');
+        if (savedLang) {
+          const cleanSaved = savedLang.replace(/[^\w\s]/g, '').trim().toLowerCase();
+          const found = LANGUAGES.find(l => 
+            l.label.toLowerCase().includes(cleanSaved) || 
+            cleanSaved.includes(l.label.toLowerCase().replace(/[^\w\s]/g, '').trim())
+          );
+          if (found) setLanguage(found);
+        } else {
+          const appLangCode = i18n.language;
+          const found = LANGUAGES.find(l => l.code.startsWith(appLangCode));
+          if (found) setLanguage(found);
+        }
       } catch (e) {
-        console.log('Voice init error:', e);
+        console.log('Init error:', e);
       }
     };
     init();
@@ -258,6 +279,21 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
       Tts.stop();
     };
   }, [speed]);
+
+  // Default voice when language changes
+  useEffect(() => {
+    if (voices.length > 0 && language) {
+      const langPrefix = language.code.split('-')[0];
+      const langVoices = voices.filter(v => 
+        v.language.toLowerCase().includes(langPrefix.toLowerCase())
+      );
+      if (langVoices.length > 0) {
+        setSelectedVoice(langVoices[0].id);
+        Tts.setDefaultVoice(langVoices[0].id).catch(() => {});
+        AsyncStorage.setItem('@GOFARMER_selected_voice', langVoices[0].id);
+      }
+    }
+  }, [language, voices]);
 
   // Voice selection effect (Instant update)
   useEffect(() => {
@@ -423,7 +459,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
 
   return (
     <View style={styles.flex}>
-      <TopAppBar title="GoFarmer" />
+      <TopAppBar title="GOFARMER" />
       <ScrollView style={styles.flex} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         
         {/* Featured player (only if podcast exists) */}
@@ -515,7 +551,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
 
               {voices.filter(v => v.language.includes((featured?.langCode || language.code).split('-')[0])).length > 0 && (
                 <TouchableOpacity style={styles.voiceBtn} onPress={() => openPicker('voice', voices.filter(v => v.language.includes((featured?.langCode || language.code).split('-')[0])).map(v => v.name || v.id))}>
-                  <Text style={styles.voiceBtnText}>🗣 {voices.find(v => v.id === selectedVoice)?.name || 'Voice'}</Text>
+                  <Text style={styles.voiceBtnText}>🗣 {voices.find(v => v.id === selectedVoice)?.name || t('radio.voice_mode')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -540,13 +576,13 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
                 style={[styles.modeBtn, inputMode === 'voice' && styles.modeBtnActive]} 
                 onPress={() => setInputMode('voice')}
               >
-                <Text style={[styles.modeBtnText, inputMode === 'voice' && styles.modeBtnTextActive]}>Voice</Text>
+                <Text style={[styles.modeBtnText, inputMode === 'voice' && styles.modeBtnTextActive]}>{t('radio.voice_mode')}</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.modeBtn, inputMode === 'text' && styles.modeBtnActive]} 
                 onPress={() => setInputMode('text')}
               >
-                <Text style={[styles.modeBtnText, inputMode === 'text' && styles.modeBtnTextActive]}>Text</Text>
+                <Text style={[styles.modeBtnText, inputMode === 'text' && styles.modeBtnTextActive]}>{t('radio.text_mode')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -576,7 +612,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
                 <View style={styles.whiteCircle} />
               </TouchableOpacity>
               
-              {isRecording && <Text style={styles.recordingStatus}>Listening...</Text>}
+              {isRecording && <Text style={styles.recordingStatus}>{t('doubts.listening')}</Text>}
             </View>
           ) : (
             <View style={[styles.selectGroup, radioGen.generating && styles.disabledForm]}>
@@ -603,7 +639,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
                 onPress={() => !radioGen.generating && openPicker('language', LANGUAGES.map(l => l.label))}
                 disabled={radioGen.generating}
               >
-                <Text style={styles.selectValue}>{language.label}</Text>
+                <Text style={[styles.selectValue, { flex: 1 }]} numberOfLines={1}>{language.label}</Text>
                 <Text style={styles.selectArrow}>▼</Text>
               </TouchableOpacity>
             </View>
@@ -615,7 +651,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
                 onPress={() => !radioGen.generating && openPicker('style', STYLES)}
                 disabled={radioGen.generating}
               >
-                <Text style={styles.selectValue}>{style}</Text>
+                <Text style={[styles.selectValue, { flex: 1 }]} numberOfLines={1}>{style}</Text>
                 <Text style={styles.selectArrow}>▼</Text>
               </TouchableOpacity>
             </View>
@@ -687,12 +723,12 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
             <ScrollView>
               {pickerModal?.options.map(opt => (
                 <TouchableOpacity key={opt} style={styles.pickerOption} onPress={() => selectOption(opt)}>
-                  <Text style={styles.pickerOptionText}>{opt}</Text>
+                  <Text style={[styles.pickerOptionText, { flex: 1 }]} numberOfLines={1}>{opt}</Text>
                   {(pickerModal.type === 'topic' ? opt === topic :
                     pickerModal.type === 'style' ? opt === style :
                     pickerModal.type === 'language' ? opt === language.label :
                     opt === selectedVoice || opt === voices.find(v => v.id === selectedVoice)?.name) && (
-                    <Text style={{ color: Colors.primary, fontWeight: '700' }}>✓</Text>
+                    <Text style={{ color: Colors.primary, fontWeight: '700', marginLeft: 8 }}>✓</Text>
                   )}
                 </TouchableOpacity>
               ))}
