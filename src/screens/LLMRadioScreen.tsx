@@ -155,19 +155,6 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
       }
     };
     init();
-
-    const options = {
-      sampleRate: 16000,
-      channels: 1,
-      bitsPerSample: 16,
-      audioSource: 6,
-      wavFile: 'radio_input.wav'
-    };
-    AudioRecord.init(options);
-    
-    AudioRecord.on('data', data => {
-      audioChunksRef.current.push(data);
-    });
   }, []);
 
   const toggleRecording = async () => {
@@ -210,11 +197,27 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
           showToast('Microphone permission denied', 'error');
           return;
         }
+        // Delay to let OS register permission grant
+        await new Promise(r => setTimeout(r, 400));
       }
       
       audioChunksRef.current = [];
+      
+      // Always re-init right before starting
+      AudioRecord.init({
+        sampleRate: 16000,
+        channels: 1,
+        bitsPerSample: 16,
+        audioSource: 6, // VOICE_RECOGNITION
+        wavFile: 'radio_input.wav'
+      });
+
+      await new Promise(r => setTimeout(r, 100));
       setIsRecording(true);
       AudioRecord.start();
+      AudioRecord.on('data', data => {
+        audioChunksRef.current.push(data);
+      });
     }
   };
 

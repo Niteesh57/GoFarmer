@@ -8,3 +8,14 @@
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
 # Add any project specific keep options here:
+
+# react-native-audio-record
+-keep class com.goodatlas.audiorecord.** { *; }
+
+# cactus-react-native (AI engine)
+-keep class com.cactus.** { *; }
+-keep class com.facebook.react.bridge.NativeModule { *; }
+-keep class com.facebook.react.bridge.ReactContextBaseJavaModule { *; }
+
+# react-native-tts
+-keep class net.no_mad.tts.** { *; }

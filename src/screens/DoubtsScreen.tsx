@@ -1,23 +1,26 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, ActivityIndicator, Animated, Alert, PermissionsAndroid, Platform, Modal, FlatList,
+  ScrollView, ActivityIndicator, Animated, Alert, PermissionsAndroid, Platform, Modal, FlatList, Image,
 } from 'react-native';
 import AudioRecord from 'react-native-audio-record';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import Tts from 'react-native-tts';
 import Markdown from 'react-native-markdown-display';
+import { launchCamera } from 'react-native-image-picker';
+import { Camera, CameraType } from 'react-native-camera-kit';
 import TopAppBar from '../components/TopAppBar';
 import { Toast } from '../components/Toast';
 import { Colors, Typography, Spacing, Radius } from '../theme/theme';
 import { getLangCode } from '../utils/langHelper';
-import { SessionService, ChatSession } from '../services/SessionService';
+import { SessionService, ChatSession, AppMessage, MessageMetadata } from '../services/SessionService';
 import { CactusLMMessage } from 'cactus-react-native';
 import { OrbAnimation } from '../components/OrbAnimation';
+import { optimizeImageForLLM } from '../utils/imageHelper';
 
 interface DoubtsScreenProps {
-  llmComplete: (prompt: string, onToken?: (tok: string) => void, audioData?: number[]) => Promise<string>;
+  llmComplete: (prompt: string, onToken?: (tok: string) => void, audioData?: number[], imagePath?: string) => Promise<string>;
   isLlmReady: boolean;
 }
 
@@ -27,8 +30,21 @@ const AGRI_SYSTEM_PROMPT =
   'Focus on crops, weather, irrigation, pest management, fertilizers, and harvest timing. ' +
   'Keep answers VERY short and concise (maximum 2-3 sentences).\n' +
   'STRICT RULE: Do NOT use any Markdown formatting like asterisks (*), hashes (#), or bolding. ' +
+  'STRICT RULE: Do NOT echo the user question. Do NOT use labels like "Assistant:", "Farmer:", "User:", or "Answer:". ' +
+  'STRICT RULE: Provide ONLY the direct answer. ' +
   'Use ONLY the NATIVE SCRIPT of the target language. Do NOT use English letters or transliteration (e.g., use Devanagari for Hindi, Telugu script for Telugu, etc.). ' +
   'Use ONLY plain text. Avoid all non-alphanumeric characters that interfere with voice reading.';
+
+const VISION_SYSTEM_PROMPT =
+  'Help the farmer with his queries. Provide clear, practical, and helpful answers. ' +
+  'You are NOT restricted to farming only; answer any questions the user has about anything in the image or otherwise. ' +
+  'Keep answers VERY short and concise (maximum 3-4 sentences).\n' +
+  'STRICT RULE: Do NOT use any Markdown formatting like asterisks (*), hashes (#), or bolding. ' +
+  'STRICT RULE: Do NOT echo the user question. Do NOT use labels like "Assistant:", "Farmer:", "User:", or "Answer:". ' +
+  'STRICT RULE: Provide ONLY the direct answer. ' +
+  'Use ONLY the NATIVE SCRIPT of the target language. Do NOT use English letters or transliteration. ' +
+  'Use ONLY plain text. Avoid all non-alphanumeric characters that interfere with voice reading.';
+
 
 const base64ToPcm = (b64: string): number[] => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -60,6 +76,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [streamingAnswer, setStreamingAnswer] = useState('');
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as 'success' | 'error' | 'info' });
   const [viewMode, setViewMode] = useState<'voice' | 'chat'>('voice');
@@ -67,6 +84,18 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
   const [isVoiceSelectorOpen, setIsVoiceSelectorOpen] = useState(false);
   const [availableVoices, setAvailableVoices] = useState<any[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
+  const [currentMetrics, setCurrentMetrics] = useState<MessageMetadata | null>(null);
+  const [isVisionMode, setIsVisionMode] = useState(false);
+  const [visionImagePath, setVisionImagePath] = useState<string | null>(null);
+
+  const cameraRef = useRef<any>(null);
+
+  // Fallback permission request for camera-kit on Android
+  useEffect(() => {
+    if (isVisionMode && Platform.OS === 'android') {
+      PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+    }
+  }, [isVisionMode]);
 
   useEffect(() => {
     AsyncStorage.getItem('@GOFARMER_selected_voice').then(v => {
@@ -110,7 +139,6 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
     }
 
     const options = { sampleRate: 16000, channels: 1, bitsPerSample: 16, audioSource: 1 };
-    AudioRecord.init(options);
   };
 
   // -- Voice Transcription --
@@ -127,17 +155,45 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
         console.warn('AudioRecord stop error:', e);
       }
     } else {
-      if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-        if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
-      }
       audioChunksRef.current = [];
       try {
-        AudioRecord.init({ sampleRate: 16000, channels: 1, bitsPerSample: 16, audioSource: 1 });
+        if (Platform.OS === 'android') {
+          const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            showToast('Microphone permission denied', 'error');
+            return;
+          }
+          // Delay to let OS register permission grant
+          await new Promise(r => setTimeout(r, 400));
+        }
+
+        // Always re-init right before starting
+        AudioRecord.init({ 
+          sampleRate: 16000, 
+          channels: 1, 
+          bitsPerSample: 16, 
+          audioSource: 1 
+        });
+
         await new Promise(r => setTimeout(r, 100));
         await AudioRecord.start();
         setIsRecording(true);
         AudioRecord.on('data', data => audioChunksRef.current.push(data));
+
+        // Start Vision capture in background if needed
+        if (isVisionMode && !visionImagePath) {
+          (async () => {
+            try {
+              const image = await cameraRef.current?.capture();
+              if (image && image.uri) {
+                const optimizedUri = await optimizeImageForLLM(image.uri);
+                setVisionImagePath(optimizedUri);
+              }
+            } catch (e) {
+              console.error('Background capture error:', e);
+            }
+          })();
+        }
       } catch (e) {
         showToast('Failed to start recording', 'error');
       }
@@ -153,10 +209,16 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
     }
 
     setIsAnalyzing(true);
+    setIsGenerating(true);
     setStreamingAnswer('');
+    setCurrentMetrics(null);
     Tts.stop();
 
-    const userMsg: CactusLMMessage = { role: 'user', content: text || t('doubts.voice_question') };
+    const userMsg: AppMessage = { 
+      role: 'user', 
+      content: text || t('doubts.voice_question'),
+      image_url: visionImagePath || undefined
+    };
 
     try {
       const savedLang = await AsyncStorage.getItem('@content_lang');
@@ -174,7 +236,9 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
         await Tts.setDefaultLanguage(ttsCode);
       }
 
-      const systemPrompt = `${AGRI_SYSTEM_PROMPT}\n\nSTRICT RULE: You MUST answer ENTIRELY in the following language: ${contentLangStr}.`;
+      const basePrompt = visionImagePath ? VISION_SYSTEM_PROMPT : AGRI_SYSTEM_PROMPT;
+      const systemPrompt = `${basePrompt}\n\nSTRICT RULE: You MUST answer ENTIRELY in the following language: ${contentLangStr}.`;
+
 
       // Get history from active session if exists
       const history = activeSession ? activeSession.messages : [];
@@ -183,9 +247,29 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
       const fullPrompt = `${systemPrompt}\n\n${updatedMessagesWithUser.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}\nAssistant:`;
 
       let ttsBuffer = '';
+      let tokenCount = 0;
+      let ttft = 0;
+      const startTime = Date.now();
+
       const aiResponse = await llmComplete(fullPrompt, (tok) => {
+        const now = Date.now();
+        if (tokenCount === 0) {
+          ttft = (now - startTime) / 1000;
+        }
+        tokenCount++;
+
         setIsAnalyzing(false);
         setStreamingAnswer(prev => prev + tok);
+
+        // Update real-time metrics (optional but nice)
+        const elapsed = (now - startTime) / 1000;
+        const currentTokPerSec = tokenCount / (elapsed - ttft || 0.1);
+        setCurrentMetrics({
+          ttft: parseFloat(ttft.toFixed(2)),
+          totalTime: parseFloat(elapsed.toFixed(2)),
+          tokenCount,
+          tokensPerSecond: parseFloat(currentTokPerSec.toFixed(1))
+        });
 
         ttsBuffer += tok;
         if (/[.,!?\n]/.test(tok) || ttsBuffer.length > 50) {
@@ -193,15 +277,44 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
           if (chunk.length > 1) Tts.speak(chunk);
           ttsBuffer = '';
         }
-      }, audioData);
+      }, audioData, visionImagePath || undefined);
+
+      const endTime = Date.now();
+      const totalTime = (endTime - startTime) / 1000;
+      const finalTokPerSec = tokenCount / (totalTime - ttft || 0.1);
+      
+      const finalMetrics: MessageMetadata = {
+        ttft: parseFloat(ttft.toFixed(2)),
+        totalTime: parseFloat(totalTime.toFixed(2)),
+        tokenCount,
+        tokensPerSecond: parseFloat(finalTokPerSec.toFixed(1))
+      };
+
+      setCurrentMetrics(finalMetrics);
 
       if (ttsBuffer.trim().length > 1) Tts.speak(ttsBuffer.trim().replace(/[*#_~]/g, ''));
-
-      const finalAIResponse = aiResponse.trim();
+      
+      let finalAIResponse = aiResponse.trim();
+      
+      // Robust Sanitization: Remove everything before the last occurrence of "Assistant:" or "Answer:" if they exist
+      // and remove common labels. This prevents echoing.
+      const labelsRegex = /^(.*?)(Assistant|AI|Assistant Advisor|Answer|Response):\s*/is;
+      const match = finalAIResponse.match(labelsRegex);
+      if (match) {
+        finalAIResponse = finalAIResponse.substring(match[0].length).trim();
+      }
+      
+      // Secondary cleaning for nested echoes like "Farmer: ... Assistant: ..."
+      finalAIResponse = finalAIResponse.replace(/^(User|Farmer|Question):\s*.*\n\s*(Assistant|Answer|Response):\s*/is, '');
+      finalAIResponse = finalAIResponse.replace(/^(Assistant|AI|Answer|Response):\s*/i, '');
 
       // ONLY SAVE IF WE GOT A RESPONSE
       if (finalAIResponse.length > 0) {
-        const assistantMsg: CactusLMMessage = { role: 'assistant', content: finalAIResponse };
+        const assistantMsg: AppMessage = { 
+          role: 'assistant', 
+          content: finalAIResponse,
+          metadata: finalMetrics
+        };
 
         let session = activeSession;
         if (!session) {
@@ -216,14 +329,25 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
             timestamp: Date.now()
           };
         } else {
-          session = {
-            ...session,
-            messages: [...session.messages, userMsg, assistantMsg]
-          };
+          // Check for duplication before adding
+          const lastMsg = session.messages[session.messages.length - 1];
+          if (lastMsg && lastMsg.content === finalAIResponse && lastMsg.role === 'assistant') {
+            // Already added, skip
+            console.log('[AI] Skipping duplicate message addition');
+          } else {
+            session = {
+              ...session,
+              messages: [...session.messages, userMsg, assistantMsg]
+            };
+          }
         }
 
         setActiveSession(session);
         await SessionService.saveSession(session);
+
+        // Clear streaming state to avoid UI duplication
+        setStreamingAnswer('');
+        setCurrentMetrics(null);
 
         // Refresh session list
         const all = await SessionService.getAllSessions();
@@ -234,12 +358,14 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
       Alert.alert(t('common.error'), e?.message ?? 'Failed to get answer');
     } finally {
       setIsAnalyzing(false);
+      setIsGenerating(false);
     }
   };
 
   const startNewSession = () => {
     setActiveSession(null);
     setStreamingAnswer('');
+    setCurrentMetrics(null);
     setViewMode('voice');
     Tts.stop();
   };
@@ -270,6 +396,32 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
     </View>
   );
 
+  const MetricsPill = ({ metrics }: { metrics: MessageMetadata }) => (
+    <View style={styles.metricsPill}>
+      <View style={styles.metricsIconBg}>
+        <Text style={styles.metricsIcon}>📊</Text>
+      </View>
+      <View style={styles.metricsGroup}>
+        <Text style={styles.metricsValue}>{metrics.tokenCount}</Text>
+        <Text style={styles.metricsLabel}>tokens</Text>
+      </View>
+      <View style={styles.metricsDot} />
+      <View style={styles.metricsGroup}>
+        <Text style={styles.metricsValue}>{metrics.totalTime}s</Text>
+      </View>
+      <View style={styles.metricsDot} />
+      <View style={styles.metricsGroup}>
+        <Text style={styles.metricsLabel}>TTFT</Text>
+        <Text style={styles.metricsValue}>{metrics.ttft}s</Text>
+      </View>
+      <View style={styles.metricsDot} />
+      <View style={styles.metricsGroup}>
+        <Text style={styles.metricsValue}>{metrics.tokensPerSecond}</Text>
+        <Text style={styles.metricsLabel}>tok/s</Text>
+      </View>
+    </View>
+  );
+
   return (
     <View style={styles.flex}>
       <TopAppBar
@@ -284,7 +436,32 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
         {viewMode === 'voice' ? (
           <View style={styles.voiceContainer}>
             <View style={styles.animationWrapper}>
-              {renderOrb()}
+              {isVisionMode ? (
+                <View style={styles.visionImageContainer}>
+                  <View style={styles.visionPreviewBox}>
+                    {visionImagePath ? (
+                      <>
+                        <Image source={{ uri: visionImagePath.startsWith('file://') ? visionImagePath : 'file://' + visionImagePath }} style={styles.visionImage} />
+                        <TouchableOpacity style={styles.retakeBtn} onPress={() => setVisionImagePath(null)}>
+                          <Text style={styles.retakeBtnText}>✕</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <Camera
+                        ref={cameraRef}
+                        style={styles.visionCamera}
+                        cameraType={CameraType.Back}
+                        flashMode="off"
+                      />
+                    )}
+                  </View>
+                  <Text style={[styles.statusText, { marginTop: 16 }]}>
+                    {isRecording ? t('doubts.listening') : isAnalyzing ? t('doubts.analyzing') : isSpeaking ? t('doubts.speaking') : 'Vision Mode Active'}
+                  </Text>
+                </View>
+              ) : (
+                renderOrb()
+              )}
             </View>
 
             <View style={styles.voiceControls}>
@@ -293,14 +470,26 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.recordBtn, isRecording && styles.recordBtnActive]}
+                style={[
+                  styles.recordBtn,
+                  isRecording && styles.recordBtnActive,
+                  (isGenerating || isSpeaking) && !isRecording && styles.recordBtnDisabled
+                ]}
                 onPress={toggleRecording}
+                disabled={(isGenerating || isSpeaking) && !isRecording}
               >
-                <Text style={styles.recordBtnIcon}>{isRecording ? '⏹' : '🎙'}</Text>
+                {(isGenerating || isSpeaking) && !isRecording ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.recordBtnIcon}>{isRecording ? '⏹' : '🎙'}</Text>
+                )}
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.newBtn} onPress={startNewSession}>
-                <Text style={styles.newBtnIcon}>+</Text>
+              <TouchableOpacity 
+                style={[styles.newBtn, isVisionMode && { backgroundColor: Colors.primary }]} 
+                onPress={() => setIsVisionMode(!isVisionMode)}
+              >
+                <Text style={[styles.newBtnIcon, isVisionMode && { color: '#fff' }]}>👁</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -310,9 +499,17 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
               <View key={idx} style={[styles.messageRow, m.role === 'user' ? styles.userRow : styles.aiRow]}>
                 <View style={[styles.bubble, m.role === 'user' ? styles.userBubble : styles.aiBubble]}>
                   {m.role === 'assistant' ? (
-                    <Markdown style={aiMarkdownStyles}>{m.content}</Markdown>
+                    <>
+                      <Markdown style={aiMarkdownStyles}>{m.content}</Markdown>
+                      {m.metadata && <MetricsPill metrics={m.metadata} />}
+                    </>
                   ) : (
-                    <Text style={styles.userMsgText}>{m.content}</Text>
+                    <>
+                      {m.image_url && (
+                        <Image source={{ uri: m.image_url }} style={styles.chatImage} />
+                      )}
+                      <Text style={styles.userMsgText}>{m.content}</Text>
+                    </>
                   )}
                 </View>
               </View>
@@ -320,7 +517,15 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
             {isAnalyzing && (
               <View style={[styles.messageRow, styles.aiRow]}>
                 <View style={[styles.bubble, styles.aiBubble]}>
-                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <ActivityIndicator size="small" color="#fff" />
+                </View>
+              </View>
+            )}
+            {!isAnalyzing && streamingAnswer.length > 0 && (
+              <View style={[styles.messageRow, styles.aiRow]}>
+                <View style={[styles.bubble, styles.aiBubble]}>
+                  <Markdown style={aiMarkdownStyles}>{streamingAnswer}</Markdown>
+                  {currentMetrics && <MetricsPill metrics={currentMetrics} />}
                 </View>
               </View>
             )}
@@ -332,8 +537,16 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
       {/* Floating Action Buttons for Chat Mode */}
       {viewMode === 'chat' && (
         <View style={styles.chatFabContainer}>
-          <TouchableOpacity style={styles.voiceSwitchFab} onPress={() => setViewMode('voice')}>
-            <Text style={styles.fabIcon}>🎙</Text>
+          <TouchableOpacity
+            style={[styles.voiceSwitchFab, (isAnalyzing || isSpeaking) && styles.recordBtnDisabled]}
+            onPress={() => setViewMode('voice')}
+            disabled={isAnalyzing || isSpeaking}
+          >
+            {isAnalyzing || isSpeaking ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.fabIcon}>🎙</Text>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -441,6 +654,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   recordBtnActive: { backgroundColor: '#f44336' },
+  recordBtnDisabled: { backgroundColor: Colors.outlineVariant, opacity: 0.6 },
   recordBtnIcon: { fontSize: 32, color: '#fff' },
   chatToggle: { width: 50, height: 50, borderRadius: 25, backgroundColor: Colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
   chatToggleIcon: { fontSize: 24 },
@@ -479,4 +693,100 @@ const styles = StyleSheet.create({
   voiceItemLang: { ...Typography.labelSm, color: Colors.onSurfaceVariant },
   doneBtn: { marginTop: 20, padding: 16, backgroundColor: Colors.primary, borderRadius: Radius.md, alignItems: 'center' },
   doneBtnText: { color: '#fff', fontWeight: '700' },
+
+  metricsPill: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: Radius.md,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 12,
+    alignSelf: 'flex-start',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    maxWidth: '100%',
+  },
+  metricsIconBg: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  metricsIcon: {
+    fontSize: 12,
+  },
+  metricsGroup: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 3,
+  },
+  metricsValue: {
+    ...Typography.labelSm,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  metricsLabel: {
+    fontSize: 10,
+    fontWeight: '400',
+    color: '#fff',
+    opacity: 0.7,
+  },
+  metricsDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#fff',
+    opacity: 0.3,
+  },
+  visionImageContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  visionPreviewBox: {
+    width: 320,
+    height: 320,
+    borderRadius: Radius.lg,
+    overflow: 'hidden',
+    borderWidth: 4,
+    borderColor: Colors.primary,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  visionImage: { width: '100%', height: '100%', borderRadius: Radius.lg },
+
+  retakeBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retakeBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  statusText: { ...Typography.bodyMd, color: '#fff', opacity: 0.8 },
+  visionCamera: {
+    width: '100%',
+    height: '100%',
+  },
+  chatImage: {
+    width: 200,
+    height: 200,
+    borderRadius: Radius.md,
+    marginBottom: Spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
 });

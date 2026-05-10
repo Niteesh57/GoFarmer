@@ -5,10 +5,9 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
-import { CactusLM } from 'cactus-react-native';
 import NetInfo from '@react-native-community/netinfo';
 // @ts-ignore
-import { CactusFileSystem } from '../../node_modules/cactus-react-native/src/native/CactusFileSystem';
+import { ModelService } from '../services/ModelService';
 import { Colors, Typography, Spacing, Radius } from '../theme/theme';
 import { CROP_CATEGORIES } from '../utils/cropData';
 
@@ -19,9 +18,6 @@ interface OnboardingScreenProps {
 }
 
 type Step = 'download' | 'setup' | 'finish';
-
-const RAG_FILE_URL = 'https://raw.githubusercontent.com/Niteesh57/GOFARMER/main/vector/rag.txt';
-const RAG_FILE_PATH = '/data/local/tmp/GOFARMER-vector/rag.txt';
 
 export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const { t } = useTranslation();
@@ -52,6 +48,20 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
       Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
     ]).start();
 
+    // Check if model already exists
+    const checkExisting = async () => {
+      const modelExists = await ModelService.modelExists('gemma-4-e2b-it');
+      const ragExists = await ModelService.ragExists();
+      if (modelExists) setModelProgress(100);
+      if (ragExists) setRagProgress(100);
+      if (modelExists && ragExists) {
+        setDownloadComplete(true);
+        // If everything is already here, we still want the user to see the "Download Complete" status
+        // but we could also auto-advance after a small delay if we wanted to.
+      }
+    };
+    checkExisting();
+
     return () => unsubscribe();
   }, [step]);
 
@@ -61,34 +71,20 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
     setRagProgress(0);
     
     try {
-      const q = 'int4' as const;
-      const downloader = new CactusLM({ model: 'gemma-4-e2b-it', options: { quantization: q } });
-      
-      // 1. Download Model (following Settings pattern)
-      (downloader as any).download({
-        onProgress: (p: number) => {
-          setModelProgress(Math.round(p * 100));
-        }
-      }).then(async () => {
-        setModelProgress(100);
-        
-        // 2. Download RAG
-        setRagProgress(20);
-        const response = await fetch(RAG_FILE_URL);
-        if (!response.ok) throw new Error('Failed to fetch knowledge base');
-        
-        setRagProgress(50);
-        const text = await response.text();
-        setRagProgress(80);
-        await CactusFileSystem.writeFile(RAG_FILE_PATH, text);
-        setRagProgress(100);
-        
-        setDownloadComplete(true);
-        setTimeout(() => setStep('setup'), 1000);
-      }).catch((e: any) => {
-        Alert.alert(t('common.error'), e.message);
-        setIsDownloading(false);
+      // 1. Download Model using shared service
+      await ModelService.downloadModel('gemma-4-e2b-it', (p) => {
+        setModelProgress(p);
       });
+      setModelProgress(100);
+      
+      // 2. Download RAG using shared service
+      await ModelService.downloadRag((p) => {
+        setRagProgress(p);
+      });
+      setRagProgress(100);
+      
+      setDownloadComplete(true);
+      setTimeout(() => setStep('setup'), 1000);
     } catch (e: any) {
       Alert.alert(t('common.error'), e.message);
       setIsDownloading(false);
@@ -111,13 +107,13 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
       
       {!isConnected && (
         <View style={styles.alertCard}>
-          <Text style={styles.alertText}>🌐 {t('weather.offline_desc')}</Text>
+          <Text style={styles.alertText}>🌐 {t('weather.offline_desc', 'Check your internet connection to continue.')}</Text>
         </View>
       )}
       
       <View style={styles.progressContainer}>
         <View style={styles.progressRow}>
-          <Text style={styles.progressLabel}>Gemma 4 AI Model</Text>
+          <Text style={styles.progressLabel}>{t('settings.ai_models')}</Text>
           <Text style={styles.progressPct}>{modelProgress}%</Text>
         </View>
         <View style={styles.progressTrack}>
@@ -125,7 +121,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
         </View>
 
         <View style={styles.progressRow}>
-          <Text style={styles.progressLabel}>Agricultural Knowledge Base</Text>
+          <Text style={styles.progressLabel}>{t('settings.knowledge_base')}</Text>
           <Text style={styles.progressPct}>{ragProgress}%</Text>
         </View>
         <View style={styles.progressTrack}>
@@ -152,9 +148,6 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
         </View>
       )}
       
-      <TouchableOpacity style={styles.skipBtn} onPress={() => setStep('setup')}>
-        <Text style={styles.skipBtnText}>{t('common.skip')}</Text>
-      </TouchableOpacity>
     </Animated.View>
   );
 
@@ -233,48 +226,80 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
           <View style={[styles.stepDot, step === 'setup' && styles.stepDotActive]} />
           <View style={[styles.stepDot, step === 'finish' && styles.stepDotActive]} />
         </View>
+        
+        {step !== 'finish' && (
+          <TouchableOpacity style={styles.headerSkipBtn} onPress={() => setStep(step === 'download' ? 'setup' : 'finish')}>
+            <Text style={styles.headerSkipText}>{t('common.skip')}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      <View style={styles.content}>
-        {step === 'download' && renderDownload()}
-        {step === 'setup' && renderSetup()}
-        {step === 'finish' && renderFinish()}
-      </View>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={styles.content}>
+          {step === 'download' && renderDownload()}
+          {step === 'setup' && renderSetup()}
+          {step === 'finish' && renderFinish()}
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { paddingTop: 60, alignItems: 'center' },
+  header: { 
+    paddingTop: Platform.OS === 'ios' ? 60 : 40, 
+    paddingHorizontal: Spacing.xl,
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    position: 'relative',
+    height: 100,
+  },
+  headerSkipBtn: {
+    position: 'absolute',
+    right: Spacing.xl,
+    top: Platform.OS === 'ios' ? 55 : 35,
+    padding: 8,
+  },
+  headerSkipText: {
+    ...Typography.labelLarge,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
   stepIndicator: { flexDirection: 'row', gap: 8 },
   stepDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.outlineVariant },
   stepDotActive: { width: 24, backgroundColor: Colors.primary },
   
-  content: { flex: 1, justifyContent: 'center', padding: Spacing.xl },
-  stepContainer: { alignItems: 'center', gap: Spacing.lg },
+  scrollContent: { flexGrow: 1 },
+  content: { padding: Spacing.xl, paddingBottom: 40 },
+  stepContainer: { alignItems: 'center', gap: Spacing.lg, width: '100%' },
   icon: { fontSize: 80, marginBottom: Spacing.md },
   title: { ...Typography.headlineMd, color: Colors.onSurface, textAlign: 'center', fontWeight: '700' },
-  description: { ...Typography.bodyLg, color: Colors.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 20 },
+  description: { ...Typography.bodyLg, color: Colors.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 10 },
   
-  progressContainer: { width: '100%', gap: Spacing.md, marginVertical: Spacing.xl },
+  progressContainer: { width: '100%', gap: Spacing.md, marginVertical: Spacing.lg },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   progressLabel: { ...Typography.labelLarge, color: Colors.onSurface },
   progressPct: { ...Typography.labelLarge, color: Colors.primary, fontWeight: '700' },
-  progressTrack: { height: 8, backgroundColor: Colors.surfaceContainerHighest, borderRadius: Radius.full, overflow: 'hidden' },
+  progressTrack: { height: 10, backgroundColor: Colors.surfaceContainerHighest, borderRadius: Radius.full, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: Radius.full },
   
-  primaryBtn: { width: '100%', height: 56, backgroundColor: Colors.primary, borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center', elevation: 4 },
+  primaryBtn: { width: '100%', height: 56, backgroundColor: Colors.primary, borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center', elevation: 4, marginTop: Spacing.md },
   primaryBtnDisabled: { opacity: 0.5 },
   primaryBtnText: { ...Typography.titleMedium, color: Colors.onPrimary, fontWeight: '700' },
   
-  skipBtn: { padding: 12 },
+  skipBtn: { padding: 12, marginTop: Spacing.sm },
   skipBtnText: { ...Typography.labelLarge, color: Colors.onSurfaceVariant },
   
-  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: Spacing.md },
   loadingText: { ...Typography.bodyMedium, color: Colors.onSurfaceVariant },
 
-  questionCard: { width: '100%', padding: Spacing.lg, backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.lg, gap: Spacing.md },
+  questionCard: { width: '100%', padding: Spacing.lg, backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.lg, gap: Spacing.md, marginTop: Spacing.md },
   questionText: { ...Typography.titleMedium, color: Colors.onSurface, fontWeight: '600' },
   choiceRow: { flexDirection: 'row', gap: Spacing.md },
   choiceBtn: { flex: 1, height: 48, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.outline, alignItems: 'center', justifyContent: 'center' },
@@ -282,7 +307,7 @@ const styles = StyleSheet.create({
   choiceBtnText: { ...Typography.titleSmall, color: Colors.onSurface },
   choiceBtnTextActive: { color: Colors.onPrimaryContainer, fontWeight: '700' },
 
-  cropSelector: { width: '100%', gap: Spacing.sm },
+  cropSelector: { width: '100%', gap: Spacing.sm, marginTop: Spacing.md },
   subLabel: { ...Typography.labelMedium, color: Colors.onSurfaceVariant },
   cropChips: { gap: Spacing.sm },
   cropChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radius.full, backgroundColor: Colors.surfaceContainerHigh },
@@ -290,7 +315,7 @@ const styles = StyleSheet.create({
   cropChipText: { ...Typography.labelLarge, color: Colors.onSurface },
   cropChipTextActive: { color: Colors.onPrimary, fontWeight: '700' },
 
-  alertCard: { padding: Spacing.lg, backgroundColor: Colors.errorContainer + '22', borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.error + '44' },
+  alertCard: { width: '100%', padding: Spacing.lg, backgroundColor: Colors.errorContainer + '22', borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.error + '44', marginVertical: Spacing.md },
   alertText: { ...Typography.bodyMedium, color: Colors.error, textAlign: 'center', lineHeight: 22 },
   finishBtn: { backgroundColor: Colors.primary },
 });

@@ -155,7 +155,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
     const picker = source === 'camera' ? require('react-native-image-picker').launchCamera : launchImageLibrary;
 
-    picker({ mediaType: 'photo', quality: 0.85 }, async res => {
+    picker({ mediaType: 'photo', quality: 0.8, maxWidth: 800, maxHeight: 800 }, async res => {
       const asset = res.assets?.[0];
       if (!asset?.uri) return;
 

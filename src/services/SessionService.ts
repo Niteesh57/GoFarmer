@@ -1,10 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CactusLMMessage } from 'cactus-react-native';
 
+export interface MessageMetadata {
+  ttft: number;
+  totalTime: number;
+  tokenCount: number;
+  tokensPerSecond: number;
+}
+
+export interface AppMessage extends CactusLMMessage {
+  metadata?: MessageMetadata;
+  image_url?: string;
+}
+
 export interface ChatSession {
   id: string;
   title: string;
-  messages: CactusLMMessage[];
+  messages: AppMessage[];
   timestamp: number;
 }
 

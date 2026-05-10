@@ -222,6 +222,9 @@ The farmer is asking for advice via voice. Answer in ${contentLangStr}.`;
             console.log('Microphone permission denied');
             return;
           }
+          // IMPORTANT: Give the OS a moment to register the permission grant
+          // This prevents crashes on high-end devices like Snapdragon 8 Gen 2/3
+          await new Promise(r => setTimeout(r, 400));
         } catch (err) {
           console.warn(err);
           return;
@@ -230,8 +233,17 @@ The farmer is asking for advice via voice. Answer in ${contentLangStr}.`;
       
       audioChunksRef.current = [];
       try {
-        AudioRecord.init({ sampleRate: 16000, channels: 1, bitsPerSample: 16, audioSource: 1 });
+        // Always re-init right before starting to ensure we have a fresh, valid native object
+        AudioRecord.init({ 
+          sampleRate: 16000, 
+          channels: 1, 
+          bitsPerSample: 16, 
+          audioSource: 1 
+        });
+        
+        // Small additional delay to ensure hardware is ready after init
         await new Promise(r => setTimeout(r, 100));
+        
         await AudioRecord.start();
         setIsRecording(true);
         AudioRecord.on('data', (data) => {

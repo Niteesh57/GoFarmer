@@ -5,10 +5,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import Tts from 'react-native-tts';
-import { CactusLM } from 'cactus-react-native';
-// @ts-ignore
-import { CactusFileSystem } from '../../node_modules/cactus-react-native/src/native/CactusFileSystem';
-import AudioRecord from 'react-native-audio-record';
+import { ModelService, RAG_FILE_PATH } from '../services/ModelService';
 import TopAppBar from '../components/TopAppBar';
 import { Toast } from '../components/Toast';
 import { Colors, Typography, Spacing, Radius } from '../theme/theme';
@@ -67,8 +64,6 @@ interface SettingsScreenProps {
 
 const STREAM_CHUNK_SIZE = 64000; // 2 seconds of 16 kHz mono 16-bit PCM bytes.
 const SPEECH_PEAK_THRESHOLD = 1000;
-const RAG_FILE_URL = 'https://raw.githubusercontent.com/Niteesh57/GOFARMER/main/vector/rag.txt';
-const RAG_FILE_PATH = '/data/local/tmp/GOFARMER-vector/rag.txt';
 
 export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
   const { t, i18n } = useTranslation();
@@ -104,9 +99,10 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
     });
   }, []);
 
-  // Notifications
-  const [notifEnabled, setNotifEnabled] = useState(true);
-  const [weatherWarn, setWeatherWarn] = useState(true);
+  // Notifications (Hidden)
+  // const [notifEnabled, setNotifEnabled] = useState(true);
+  // const [weatherWarn, setWeatherWarn] = useState(true);
+
 
   // Models
   const [models, setModels] = useState<ModelInfo[]>(MODELS);
@@ -215,7 +211,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
       setDeviceRam(`${Math.round(totalRam / (1024 * 1024 * 1024))} GB`);
 
       // 3. Model Storage Check (Non-fake)
-      const gemmaExists = await CactusFileSystem.modelExists('gemma-4-e2b-it-int4');
+      const gemmaExists = await ModelService.modelExists('gemma-4-e2b-it');
       if (gemmaExists) {
           setAppModelsSize(4.5); // The real size on disk if it exists
       } else {
@@ -271,9 +267,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
       if (model.id === 'gemma-4-e2b-it') continue; 
 
       try {
-        const q = 'int4';
-        const modelName = `${model.id}-${q}`;
-        const exists = await CactusFileSystem.modelExists(modelName);
+        const exists = await ModelService.modelExists(model.id);
         
         if (exists) {
           setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'downloaded', offline: true } : m));
@@ -288,7 +282,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
 
   const checkRagFile = useCallback(async () => {
     try {
-      const exists = await CactusFileSystem.fileExists(RAG_FILE_PATH);
+      const exists = await ModelService.ragExists();
       setRagStatus(exists ? 'downloaded' : 'not_downloaded');
     } catch (e) {
       console.log('Failed to check RAG file:', e);
@@ -299,12 +293,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
     setIsUpdatingRag(true);
     try {
       showToast('Fetching latest knowledge base...', 'info');
-      const response = await fetch(RAG_FILE_URL);
-      if (!response.ok) throw new Error('Failed to fetch from GitHub');
-      
-      const text = await response.text();
-      await CactusFileSystem.writeFile(RAG_FILE_PATH, text);
-      
+      await ModelService.downloadRag();
       setRagStatus('downloaded');
       showToast('Knowledge base updated!', 'success');
     } catch (e: any) {
@@ -375,6 +364,26 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
         const code = getAppLangCode(value);
         AsyncStorage.setItem('@GOFARMER_language', code);
         i18n.changeLanguage(code);
+
+        // Interlink: Auto-set content language when app language changes
+        const languageMappings: Record<string, string> = {
+          'en': '🇬🇧 English',
+          'hi': '🇮🇳 Hindi',
+          'es': '🇪🇸 Español',
+          'fr': '🇫🇷 Français',
+          'zh': '🇨🇳 Chinese',
+          'ja': '🇯🇵 Japanese',
+          'te': '🇮🇳 Telugu',
+          'kn': '🇮🇳 Kannada',
+          'sv': '🇸🇪 Swedish',
+          'de': '🇩🇪 German',
+        };
+        const contentLabel = languageMappings[code];
+        if (contentLabel) {
+          setContentLang(contentLabel);
+          AsyncStorage.setItem('@content_lang', contentLabel);
+          loadVoicesForLang(contentLabel);
+        }
         break;
       case 'contentLang':
         setContentLang(value);
@@ -412,35 +421,44 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
     showToast(`${t('settings.active_crop')} ${crop}`, 'success');
   };
 
-  const handleModelAction = (model: ModelInfo, action: 'download' | 'delete' | 'pause') => {
+  const startDownload = async (model: ModelInfo, force: boolean) => {
+    if (force) await ModelService.deleteModel(model.id);
+    setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'downloading', progress: 0 } : m));
+    showToast(`Downloading ${model.name}...`, 'info');
+
+    ModelService.downloadModel(model.id, (progress) => {
+      setModels(prev => prev.map(m => m.id === model.id ? { ...m, progress } : m));
+    }).then(() => {
+      setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'downloaded', offline: true, progress: undefined } : m));
+      showToast(`${model.name} downloaded!`, 'success');
+    }).catch((err: any) => {
+      setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'not_downloaded', progress: undefined } : m));
+      showToast(`Download failed: ${err.message}`, 'error');
+    });
+  };
+
+  const handleModelAction = async (model: ModelInfo, action: 'download' | 'delete' | 'pause') => {
     if (action === 'download') {
-      setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'downloading', progress: 0 } : m));
-      showToast(`Downloading ${model.name}...`, 'info');
-
-      const q = 'int4' as const;
-      const downloader = new CactusLM({ model: model.id, options: { quantization: q } });
-
-      (downloader as any).download({
-        onProgress: (p: number) => {
-          const progress = Math.round(p * 100);
-          setModels(prev => prev.map(m => m.id === model.id ? { ...m, progress } : m));
-        }
-      }).then(() => {
-        setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'downloaded', offline: true, progress: undefined } : m));
-        showToast(`${model.name} downloaded!`, 'success');
-      }).catch((err: any) => {
-        setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'not_downloaded', progress: undefined } : m));
-        showToast(`Download failed: ${err.message}`, 'error');
-      });
+      const exists = await ModelService.modelExists(model.id);
+      if (exists) {
+        setConfirmModal({
+          title: t('settings.redownload_title') || 'Re-download Model?',
+          message: t('settings.redownload_message') || 'This model already exists. Do you want to delete and download it again?',
+          onConfirm: async () => {
+            setConfirmModal(null);
+            startDownload(model, true);
+          }
+        });
+      } else {
+        startDownload(model, false);
+      }
     } else if (action === 'delete') {
       setConfirmModal({
         title: t('settings.delete_model_title'),
         message: t('settings.delete_model_message', { name: model.name }),
         onConfirm: async () => {
           try {
-            const q = 'int4';
-            const modelName = `${model.id}-${q}`;
-            await CactusFileSystem.deleteModel(modelName);
+            await ModelService.deleteModel(model.id);
             setModels(prev => prev.map(m => m.id === model.id ? { ...m, status: 'not_downloaded', offline: false, progress: undefined } : m));
             setConfirmModal(null);
             showToast(t('settings.model_deleted', { name: model.name }), 'info');
@@ -673,6 +691,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
         </View>
 
         {/* Notifications */}
+        {/* Notifications - Hidden
         <View style={[styles.sectionCard, { backgroundColor: Colors.surfaceContainerLowest, borderColor: Colors.outlineVariant }]}>
           <Text style={[styles.sectionHeader, { color: Colors.onSurface }]}>🔔 {t('settings.notifications_alerts')}</Text>
 
@@ -700,6 +719,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
             </View>
           )}
         </View>
+        */}
 
         {/* Appearance - Hidden for now
         <View style={[styles.sectionCard, { backgroundColor: Colors.surfaceContainerLowest, borderColor: Colors.outlineVariant }]}>
@@ -764,6 +784,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
           <Text style={styles.aboutText}>{t('settings.version')} 1.0.0  ·  Build: 20260503</Text>
           <Text style={styles.aboutText}>{t('settings.developer')} {t('settings.developer_name')}</Text>
 
+          {/* User Guide Hidden
           <View style={styles.aboutLinks}>
             {[`📖 ${t('settings.user_guide')}`].map(link => (
               <TouchableOpacity key={link} style={[styles.aboutLink, { borderBottomWidth: 0 }]}>
@@ -772,6 +793,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
               </TouchableOpacity>
             ))}
           </View>
+          */}
         </View>
       </ScrollView>
 

@@ -36,7 +36,9 @@ import DoubtsScreen from './src/screens/DoubtsScreen';
 import LLMRadioScreen from './src/screens/LLMRadioScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
+import IncompatibleScreen from './src/screens/IncompatibleScreen';
 import { getInsights } from './src/services/InsightsService';
+import { ModelService } from './src/services/ModelService';
 import BottomTabBar, { TabName } from './src/navigation/BottomTabBar';
 import { Colors } from './src/theme/theme';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
@@ -87,7 +89,7 @@ import DeviceInfo from 'react-native-device-info';
 let lm: CactusLM;
 
 // ── App Flow Type ─────────────────────────────────────────────────────────────
-type AppFlow = 'splash' | 'language' | 'onboarding' | 'main';
+type AppFlow = 'splash' | 'language' | 'onboarding' | 'main' | 'incompatible';
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App(): React.JSX.Element {
@@ -111,6 +113,9 @@ function AppContent() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [weatherData, setWeatherData] = useState<any>(null);
   const [isWeatherLoading, setIsWeatherLoading] = useState(false);
+  const [deviceSpecs, setDeviceSpecs] = useState({ ram: '0', cores: 0, processor: '' });
+  const [incompatibleReason, setIncompatibleReason] = useState('');
+
   // Restore language & Load weather data
   useEffect(() => {
     AsyncStorage.getItem(LANGUAGE_KEY).then(langCode => {
@@ -164,14 +169,27 @@ function AppContent() {
             cores = specs.cpuCores;
           }
         } else {
-          // iOS fallback: react-native-device-info can provide cores if needed, 
-          // but for now let's use a safe default or reasonable guess.
-          // Note: DeviceInfo doesn't expose cores directly on iOS easily without native code,
           // but we can assume most modern iPhones have at least 6-8 cores.
-          cores = 6; 
+          cores = 6;
         }
 
-        // 2. Dynamic LM Configuration (No faking)
+        const specs = {
+          ram: ramGB.toFixed(1),
+          cores: cores,
+          processor: Platform.OS === 'android' ? 'Android ARM64' : 'Apple Silicon'
+        };
+        setDeviceSpecs(specs);
+
+        // 2. Hardware Compatibility Check
+        if (ramGB < 3) {
+          console.warn('[AI] Device incompatible: Insufficient RAM', ramGB.toFixed(1));
+          setIncompatibleReason(`Your device has ${ramGB.toFixed(1)}GB RAM. GOFARMER requires at least 3GB to run the local AI model safely.`);
+          setFlow('incompatible');
+          setInitializing(false);
+          return;
+        }
+
+        // 3. Dynamic LM Configuration (No faking)
         console.log(`[AI] Configuring for ${cores} cores and ${ramGB.toFixed(1)}GB RAM`);
 
         lm = new CactusLM({
@@ -182,16 +200,16 @@ function AppContent() {
           use_gpu: true,
           gpu_device: 0,
           offload_kqv: true,
-          offload_all: ramGB > 6, // Only offload all if we have enough RAM
+          offload_all: ramGB > 6, 
           flash_attn: true,
-          n_threads: cores,
-          n_cores_physical: cores,
-          cpu_affinity: true,
-          n_context: ramGB < 4 ? 128 : 256, // Smaller context for low-RAM devices
+          n_threads: ramGB > 10 ? 8 : Math.min(4, cores),
+          n_cores_physical: ramGB > 10 ? 8 : Math.min(4, cores),
+          cpu_affinity: ramGB > 10 ? false : true,
+          n_context: ramGB > 15 ? 2000 : 1024,
           kv_cache_quantize: true,
           kv_cache_type: 'int4',
           use_mmap: true,
-          use_pinned_memory: ramGB > 4,
+          use_pinned_memory: true,
         });
 
         console.log('[AI] Initializing model:', MODEL_NAME);
@@ -209,6 +227,26 @@ function AppContent() {
           }
         } catch (fallbackErr: any) {
           console.warn('[AI] Model init failed completely:', fallbackErr?.message);
+          
+          // Check if the model exists but is corrupted
+          const exists = await ModelService.modelExists(MODEL_NAME);
+          if (exists) {
+            console.log('[AI] Model exists but failed to init. Marking as corrupted.');
+            Alert.alert(
+              'Model Corrupted',
+              'The AI model file seems to be corrupted or incomplete. Would you like to delete it and re-download?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Repair & Re-download', 
+                  onPress: async () => {
+                    await ModelService.deleteModel(MODEL_NAME);
+                    setFlow('onboarding'); // Redirect to onboarding to trigger download
+                  } 
+                }
+              ]
+            );
+          }
         }
       } finally {
         setInitializing(false);
@@ -222,6 +260,7 @@ function AppContent() {
 
   // ── Handle splash done ─────────────────────────────────────────────────────
   const handleSplashDone = useCallback(async () => {
+    if (flow === 'incompatible') return;
     try {
       const done = await AsyncStorage.getItem(ONBOARDING_KEY);
       if (done === 'true') {
@@ -232,12 +271,33 @@ function AppContent() {
     } catch {
       setFlow('language');
     }
-  }, []);
+  }, [flow]);
 
   // ── Handle language continue ───────────────────────────────────────────────
-  const handleLanguageContinue = useCallback((langCode: string) => {
-    i18n.changeLanguage(langCode);
-    AsyncStorage.setItem(LANGUAGE_KEY, langCode);
+  const handleLanguageContinue = useCallback(async (langCode: string) => {
+    // Mapping for interlinking app language and preferred content language
+    const languageMappings: Record<string, { appLabel: string; contentLabel: string }> = {
+      en: { appLabel: '🇬🇧 English', contentLabel: '🇬🇧 English' },
+      hi: { appLabel: '🇮🇳 हिंदी', contentLabel: '🇮🇳 Hindi' },
+      es: { appLabel: '🇪🇸 Español', contentLabel: '🇪🇸 Español' },
+      fr: { appLabel: '🇫🇷 Français', contentLabel: '🇫🇷 Français' },
+      zh: { appLabel: '🇨🇳 中文', contentLabel: '🇨🇳 Chinese' },
+      ja: { appLabel: '🇯🇵 日本語', contentLabel: '🇯🇵 Japanese' },
+      te: { appLabel: '🇮🇳 తెలుగు', contentLabel: '🇮🇳 Telugu' },
+      kn: { appLabel: '🇮🇳 ಕನ್ನಡ', contentLabel: '🇮🇳 Kannada' },
+      sv: { appLabel: '🇸🇪 Svenska', contentLabel: '🇸🇪 Swedish' },
+      de: { appLabel: '🇩🇪 Deutsch', contentLabel: '🇩🇪 German' },
+    };
+
+    const mapping = languageMappings[langCode] || languageMappings.en;
+
+    await i18n.changeLanguage(langCode);
+    await AsyncStorage.setItem(LANGUAGE_KEY, langCode);
+    
+    // Auto-set labels for Settings synchronization
+    await AsyncStorage.setItem('@GOFARMER_app_lang_label', mapping.appLabel);
+    await AsyncStorage.setItem('@content_lang', mapping.contentLabel);
+    
     setFlow('onboarding');
   }, [i18n]);
 
@@ -262,20 +322,26 @@ function AppContent() {
   }, [modelReady]);
 
   // ── Doubts specialized completion ────────────────────────────────────────
-  const llmCompleteDoubts = useCallback(async (prompt: string, onToken?: (tok: string) => void, audioData?: number[]): Promise<string> => {
+  const llmCompleteDoubts = useCallback(async (prompt: string, onToken?: (tok: string) => void, audioData?: number[], imagePath?: string): Promise<string> => {
     if (!modelReady) throw new Error('Model not ready');
     setIsGenerating(true);
     try {
+      const messages: any[] = [
+        { role: 'system', content: SYSTEM_PROMPT_DOUBTS },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ];
+      
+      if (imagePath) {
+        messages[1].images = [imagePath];
+      }
+
       const result = await lm.complete({
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT_DOUBTS },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
+        messages,
         audio: audioData,
-        options: { temperature: 0.4, maxTokens: 512 },
+        options: { temperature: 0.1, maxTokens: 128, top_p: 0.9, top_k: 40 },
         onToken,
       });
       return result.response;
@@ -283,6 +349,7 @@ function AppContent() {
       setIsGenerating(false);
     }
   }, [modelReady]);
+
 
   // ── Radio specialized completion ─────────────────────────────────────────
   const [radioGen, setRadioGen] = useState({
@@ -331,7 +398,7 @@ function AppContent() {
           } as any,
         ],
         audio: audioData,
-        options: { temperature: 0.7, maxTokens: 800 },
+        options: { temperature: 0.7, maxTokens: 600, top_p: 0.9, top_k: 40 },
       });
 
       const cleanScript = response.response.replace(/[#*`]/g, '').trim();
@@ -384,7 +451,7 @@ function AppContent() {
           { role: 'system', content: SYSTEM_PROMPT_RADIO },
           { role: 'user', content: prompt },
         ],
-        options: { temperature: 0.7, maxTokens: 800 },
+        options: { temperature: 0.7, maxTokens: 600, top_p: 0.9, top_k: 40 },
         onToken,
       });
       return result.response;
@@ -416,13 +483,15 @@ function AppContent() {
         options: {
           temperature: 0.1,
           maxTokens: 512,
-          enableThinking: false, 
-          enableRag: true, 
+          enableThinking: false,
+          enableRag: true,
+          top_p: 0.9,
+          top_k: 40,
         },
         onToken: callbacks.onToken,
       });
 
-      return { response: result.response }; 
+      return { response: result.response };
     } finally {
       setIsGenerating(false);
     }
@@ -434,9 +503,9 @@ function AppContent() {
     switch (activeTab) {
       case 'weather':
         return (
-          <WeatherScreen 
-            llmComplete={llmCompleteWeather} 
-            isLlmReady={modelReady} 
+          <WeatherScreen
+            llmComplete={llmCompleteWeather}
+            isLlmReady={modelReady}
             weatherDataProp={weatherData}
             isLoadingProp={isWeatherLoading}
             refreshWeather={() => loadWeatherData(true)}
@@ -474,6 +543,10 @@ function AppContent() {
 
   if (flow === 'onboarding') {
     return <OnboardingScreen onComplete={() => setFlow('main')} />;
+  }
+
+  if (flow === 'incompatible') {
+    return <IncompatibleScreen reason={incompatibleReason} specs={deviceSpecs} />;
   }
 
   // ── Main App ───────────────────────────────────────────────────────────────
