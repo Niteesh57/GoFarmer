@@ -11,6 +11,13 @@ export interface Coordinates {
   longitude: number;
 }
 
+/**
+ * Requests native operating system permissions for high-accuracy location tracking.
+ *
+ * Silently handles UI container attachment lifecycle bounds on Android to prevent crashes.
+ *
+ * @return {Promise<boolean>} True if permissions are granted or implicitly authorized; false on denial or exception.
+ */
 export const requestLocationPermission = async (): Promise<boolean> => {
   if (Platform.OS === 'ios') return true;
   try {
@@ -33,6 +40,14 @@ export const requestLocationPermission = async (): Promise<boolean> => {
   }
 };
 
+/**
+ * Retrieves the device's current global geographic coordinates.
+ *
+ * Executes zero-cache fine location polling via standard community location provider engines.
+ * Immediately falls back to default regional coordinates upon query error or request denial.
+ *
+ * @return {Promise<Coordinates>} A resolved coordinate object containing latitude and longitude fields.
+ */
 export const getCurrentLocation = async (): Promise<Coordinates> => {
   try {
     const hasPermission = await requestLocationPermission();
@@ -54,7 +69,7 @@ export const getCurrentLocation = async (): Promise<Coordinates> => {
           // Fallback to a default coordinate (e.g. Hyderabad) instead of timing out and crashing
           resolve({ latitude: 17.3850, longitude: 78.4867 });
         },
-        { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
       );
     });
   } catch (err) {
@@ -67,6 +82,15 @@ const getFormattedDate = (date: Date) => {
   return date.toISOString().split('T')[0];
 };
 
+/**
+ * Executes direct network queries against the FastAPI backend insight engine.
+ *
+ * Resolves current user location, formulates a 15-day forward horizon metric matrix,
+ * automatically redirects loopback addresses targeting Android emulators, and writes
+ * fresh responses directly to persistent storage layer blocks.
+ *
+ * @return {Promise<any>} Raw JSON payload structured with daily timeseries arrays.
+ */
 export const fetchInsightsFromApi = async () => {
   try {
     const coords = await getCurrentLocation();
@@ -75,7 +99,12 @@ export const fetchInsightsFromApi = async () => {
     const endDate = new Date();
     endDate.setDate(today.getDate() + 15);
 
-    const formatDate = (date: Date) => date.toISOString().split('T')[0];
+    const formatDate = (date: Date) => {
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}-${month}-${year}`;
+    };
 
     const payload = {
       coordinates: [
@@ -128,6 +157,15 @@ export const fetchInsightsFromApi = async () => {
   }
 };
 
+/**
+ * Retrieves weather and insight timeseries matrices utilizing a cache-first optimization layout.
+ *
+ * Validates storage freshness to limit unneeded network traffic. Automatically pivots to local
+ * cache payloads if backend calls timeout or fail due to network disconnection.
+ *
+ * @param {boolean} [forceUpdate=false] Direct cache bypass directive triggering fresh downloads.
+ * @return {Promise<any>} The multi-day aggregated insights structure object.
+ */
 export const getInsights = async (forceUpdate = false) => {
   try {
     const lastUpdateStr = await AsyncStorage.getItem(LAST_UPDATE_KEY);
@@ -178,6 +216,13 @@ export const getInsights = async (forceUpdate = false) => {
   }
 };
 
+/**
+ * Validates cached insight timelines against present device wall-clock bounds.
+ *
+ * Triggers native feedback dialogue alerts reminding users to re-sync if cache validity has expired.
+ *
+ * @param {string} endDateStr Cached date boundary string serialized in ISO format.
+ */
 const checkEndDateWarning = (endDateStr: string) => {
   if (!endDateStr) return;
   const endDate = new Date(endDateStr);

@@ -69,11 +69,13 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
   const { t, i18n } = useTranslation();
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('light');
 
+
+
   // Language & locale
   const [appLang, setAppLang] = useState(APP_LANGUAGES[0]);
   const [contentLang, setContentLang] = useState(CONTENT_LANGUAGES[0]);
   const [tempUnit, setTempUnit] = useState(TEMP_UNITS[0]);
-  const [activeCrop, setActiveCrop] = useState<string>('Wheat');
+  const [activeCrop, setActiveCrop] = useState<string>('None');
   const [isCustomCrop, setIsCustomCrop] = useState(false);
   const [cropModalVisible, setCropModalVisible] = useState(false);
 
@@ -92,9 +94,11 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
         setActiveCrop(crop);
         // Check if it's a predefined crop
         const allCrops = Object.values(CROP_CATEGORIES).flat();
-        if (!allCrops.includes(crop) && crop !== 'Custom') {
+        if (!allCrops.includes(crop) && crop !== 'Custom' && crop !== 'None') {
           setIsCustomCrop(true);
         }
+      } else {
+        setActiveCrop('None');
       }
     });
   }, []);
@@ -634,7 +638,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
                   style={styles.customCropInput}
                   placeholder={t('advisor.placeholder')}
                   placeholderTextColor={Colors.onSurfaceVariant}
-                  value={activeCrop}
+                  value={activeCrop === 'None' ? '' : activeCrop}
                   onChangeText={(text) => {
                     setActiveCrop(text);
                     AsyncStorage.setItem('@active_crop', text);
@@ -642,6 +646,20 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
                 />
               </View>
             </View>
+          )}
+          
+          {activeCrop && activeCrop !== 'None' && (
+            <TouchableOpacity 
+              style={[styles.outlineBtn, { marginTop: 12, borderColor: Colors.error, backgroundColor: Colors.errorContainer + '11', alignSelf: 'flex-start', marginLeft: 16 }]}
+              onPress={() => {
+                setActiveCrop('None');
+                setIsCustomCrop(false);
+                AsyncStorage.removeItem('@active_crop');
+                showToast('Crop cleared', 'info');
+              }}
+            >
+               <Text style={[styles.outlineBtnText, { color: Colors.error, fontWeight: '700', textAlign: 'center' }]}>Clear Crop</Text>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -1070,4 +1088,43 @@ const styles = StyleSheet.create({
   cropChipActive: { backgroundColor: Colors.primaryContainer, borderColor: Colors.primary },
   cropChipText: { ...Typography.labelMd, color: Colors.onSurface },
   cropChipTextActive: { color: Colors.onPrimaryContainer, fontWeight: '700' },
+
+  testRecordBtn: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 14,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  testRecordBtnActive: {
+    backgroundColor: Colors.error,
+  },
+  testRecordBtnDisabled: {
+    backgroundColor: Colors.outlineVariant,
+    opacity: 0.7,
+  },
+  testRecordBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  testResultCard: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: Colors.surfaceContainerLow,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+  },
+  testResultLabel: {
+    ...Typography.labelSm,
+    color: Colors.primary,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  testResultText: {
+    ...Typography.bodyMd,
+    color: Colors.onSurface,
+  },
 });

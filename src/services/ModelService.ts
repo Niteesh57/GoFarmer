@@ -6,6 +6,14 @@ export const RAG_FILE_URL = 'https://raw.githubusercontent.com/Niteesh57/GOFARME
 export const RAG_FILE_PATH = '/data/local/tmp/GOFARMER-vector/rag.txt';
 
 export const ModelService = {
+  /**
+   * Downloads offline large language model binary blocks securely to the filesystem.
+   *
+   * @param {string} modelId Targeted primary model identifier string.
+   * @param {function(number): void} onProgress Callback outputting byte transmission percentages.
+   * @param {boolean} [force=false] Direct deletion switch enforcing fresh retrieval pipelines.
+   * @return {Promise<void>} Resolves when full chunk integrity checks clear.
+   */
   async downloadModel(modelId: string, onProgress: (progress: number) => void, force = false): Promise<void> {
     const q = 'int4' as const;
     
@@ -38,12 +46,25 @@ export const ModelService = {
     }
   },
 
+  /**
+   * Explicitly purges possibly corrupted model traces and re-initializes clean downloads.
+   *
+   * @param {string} modelId Targeted corrupted model binary name.
+   * @param {function(number): void} onProgress Real-time progress metric callback interface.
+   * @return {Promise<void>} Resolves when download pipeline rebuilding wraps up.
+   */
   async repairModel(modelId: string, onProgress: (progress: number) => void): Promise<void> {
     // Explicitly delete and redownload
     await this.deleteModel(modelId);
     return this.downloadModel(modelId, onProgress, true);
   },
 
+  /**
+   * Downloads remote vector index repositories supporting offline context retrieval engines.
+   *
+   * @param {function(number): void} [onProgress] Step-wise transmission updates tracking interface.
+   * @return {Promise<void>} Resolves when text chunks persist into vector search directories.
+   */
   async downloadRag(onProgress?: (progress: number) => void): Promise<void> {
     if (onProgress) onProgress(20);
     const response = await fetch(RAG_FILE_URL);
@@ -56,6 +77,12 @@ export const ModelService = {
     if (onProgress) onProgress(100);
   },
 
+  /**
+   * Executes exhaustive physical binary layer deletions clearing model archives from native storage.
+   *
+   * @param {string} modelId Targeted base model string identifier.
+   * @return {Promise<void>} Resolves when core model and intermediate caching zip files drop.
+   */
   async deleteModel(modelId: string): Promise<void> {
     const q = 'int4';
     const modelName = `${modelId}-${q}`;
@@ -79,12 +106,23 @@ export const ModelService = {
     }
   },
 
+  /**
+   * Validates file system layout tracking the presence of downloaded local models.
+   *
+   * @param {string} modelId Targeted base identifier string.
+   * @return {Promise<boolean>} True if native runtime model assets resolve correctly.
+   */
   async modelExists(modelId: string): Promise<boolean> {
     const q = 'int4';
     const modelName = `${modelId}-${q}`;
     return await CactusFileSystem.modelExists(modelName);
   },
 
+  /**
+   * Verifies the offline presence of the knowledge base vector retrieval layout.
+   *
+   * @return {Promise<boolean>} True if the local rag.txt vector resource path exists.
+   */
   async ragExists(): Promise<boolean> {
     return await CactusFileSystem.fileExists(RAG_FILE_PATH);
   }

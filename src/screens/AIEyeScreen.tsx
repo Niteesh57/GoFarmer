@@ -16,7 +16,6 @@ import { getCurrentLocation } from '../services/InsightsService';
 interface ScanResult {
   id: string;
   imagePath: string;
-  plant: string;
   status: 'healthy' | 'diseased' | 'warning';
   disease?: string;
   confidence?: number;
@@ -84,9 +83,11 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
       if (a) setAnchorLocation(JSON.parse(a));
     });
 
-    const fetchLoc = () => getCurrentLocation().then(setCurrentLocation).catch(console.log);
+    const fetchLoc = () => getCurrentLocation()
+      .then(c => setCurrentLocation({ lat: c.latitude, lng: c.longitude }))
+      .catch(console.log);
     fetchLoc();
-    const interval = setInterval(fetchLoc, 5000);
+    const interval = setInterval(fetchLoc, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -107,6 +108,11 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as 'success' | 'error' | 'info' });
 
+  /**
+   * Deletes a specific scan record from active session state and clears view selection.
+   *
+   * @param {string} id Unique identifier of the target scan object.
+   */
   const handleDeleteScan = (id: string) => {
     setScans(prev => prev.filter(s => s.id !== id));
     setResult(null);
@@ -114,10 +120,25 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
   };
 
 
+  /**
+   * Triggers a temporary contextual visual feedback toast banner.
+   *
+   * @param {string} message Text content to display within the banner.
+   * @param {'success' | 'error' | 'info'} [type='info'] Severity status dictating styling.
+   */
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ visible: true, message, type });
   };
 
+  /**
+   * Groups disparate geospatial scan markers into consolidated visual clusters.
+   *
+   * Utilizes Euclidean distance comparisons against an anchor cluster radius
+   * to group nearby crop diagnostic logs within roughly ~5 meters.
+   *
+   * @param {ScanResult[]} allScans Complete array of persistent scan items.
+   * @return {ScanResult[][]} Array of clustered item arrays for map rendering.
+   */
   const getClusters = (allScans: ScanResult[]) => {
     const threshold = 0.00005; // ~5 meters
     const groups: ScanResult[][] = [];
@@ -142,6 +163,16 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
     return groups;
   };
 
+  /**
+   * Initiates plant scanning via device camera capture or photo gallery selection.
+   *
+   * Automatically requests platform hardware permissions, coordinates with the LLM Vision
+   * engine to infer plant pathology, extracts JSON schema outputs containing remedies,
+   * maps accurate diagnostic timestamps/coordinates, and updates local persistent states.
+   *
+   * @param {'camera' | 'gallery'} source Targeted native image input provider.
+   * @return {Promise<void>} Resolves when image pipeline parsing and state commits finish.
+   */
   const handleScanPlant = useCallback(async (source: 'camera' | 'gallery') => {
     if (Platform.OS === 'android') {
       const perms = source === 'camera' 
@@ -180,13 +211,11 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
         }
 
         const prompt =
-          'You are an expert plant pathologist with access to a detailed agricultural database. ' +
-          'Analyze the symptoms (color, spots, shape) on the leaf. ' +
-          'Then, provide a diagnosis using the most accurate information from your RAG database. ' +
-          'Specifically include the "Chemical Treatment / Composition" as the "composition" and the "Management" steps as "management". ' +
-          `You MUST provide all the text values ENTIRELY in ${contentLangStr}. ` +
-          'Respond ONLY in this exact JSON format:\n' +
-          '{"plant":"<plant name>","status":"healthy|diseased|warning","disease":"<disease name or none>","confidence":<0-100>,"severity":<0-100>,"composition":"<initial chemical treatment>","management":"<how to stop the spread>","recommendations":["<tip1>","<tip2>","<tip3>"]}\n';
+          'You are an expert plant pathologist. Analyze the image and provide a diagnosis. ' +
+          'Specifically include the "Chemical Treatment" as "composition" and the "Management" steps as "management". ' +
+          `Provide values in ${contentLangStr}. ` +
+          'Respond ONLY in this JSON format:\n' +
+          '{"status":"healthy|diseased|warning","disease":"<disease name or none>","confidence":<0-100>,"severity":<0-100>,"composition":"<initial chemical treatment>","management":"<how to stop the spread>","recommendations":["<tip1>","<tip2>","<tip3>"]}\n';
 
         const { response } = await llmComplete(prompt, imagePath, {});
 
@@ -196,7 +225,6 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
           parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
         } catch {
           parsed = { 
-            plant: 'Unknown Plant', 
             status: 'warning', 
             disease: 'Unable to detect', 
             confidence: 50, 
@@ -217,7 +245,6 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
         const newScan: ScanResult = {
           id: Date.now().toString(),
           imagePath: asset.uri,
-          plant: parsed.plant || 'Unknown Plant',
           status: parsed.status || 'warning',
           disease: parsed.disease !== 'none' ? parsed.disease : undefined,
           confidence: parsed.confidence,
@@ -257,12 +284,6 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
   return (
     <View style={styles.flex}>
-      {/* MAIN AREA */}
-      <View style={[styles.mapContainer, { backgroundColor: '#fdfdfd', flex: 1 }]}>
-        <View style={{position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, backgroundColor: 'rgba(255,255,255,0.7)'}}>
-          <TopAppBar title="GOFARMER" rightLabel={t('common.history')} />
-        </View>
-        
       {/* MAIN AREA */}
       <View style={[styles.mapContainer, { backgroundColor: '#fdfdfd', flex: 1, overflow: 'hidden' }]}>
         <View style={{position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, backgroundColor: 'rgba(255,255,255,0.7)'}}>
@@ -360,15 +381,23 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
                   </View>
                   <View style={styles.snapLabelSmall}>
                     <Text style={styles.snapLabelTextSmall} numberOfLines={1}>
-                      {cluster.length > 1 ? t('aieye.collection', {count: cluster.length}) : (scan.disease || scan.plant)}
+                      {cluster.length > 1 ? t('aieye.collection', {count: cluster.length}) : (scan.disease || t('common.healthy'))}
                     </Text>
                   </View>
                 </View>
               </TouchableOpacity>
             );
           })}
+
+          {/* Live Coordinates Overlay */}
+          {currentLocation && (
+            <View style={styles.liveCoords}>
+              <Text style={styles.liveCoordsText}>
+                {currentLocation.lat.toFixed(6)}, {currentLocation.lng.toFixed(6)}
+              </Text>
+            </View>
+          )}
         </View>
-      </View>
       </View>
 
       {/* Segmented Control & View Button */}
@@ -436,7 +465,6 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
                        {item.imagePath ? <Image source={{uri: item.imagePath}} style={styles.scanImage} /> : <Text>🌿</Text>}
                      </View>
                      <View style={{flex: 1}}>
-                       <Text style={styles.scanPlant}>{item.plant}</Text>
                        <Text style={[styles.scanStatus, {color: statusColor(item.status)}]}>{statusEmoji(item.status)} {item.disease || 'Healthy'}</Text>
                        <Text style={styles.scanTime}>{item.time} • {item.location}</Text>
                      </View>
@@ -472,7 +500,6 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
                 )}
 
                 <View style={styles.resultBody}>
-                  <Text style={styles.resultPlant}>{result.plant}</Text>
                   <View style={[styles.resultStatusBadge, { backgroundColor: statusColor(result.status) + '22', borderColor: statusColor(result.status) }]}>
                     <Text style={[styles.resultStatusText, { color: statusColor(result.status) }]}>
                       {statusEmoji(result.status)} {result.status.toUpperCase()}
@@ -481,12 +508,12 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
                   {result.disease && (
                     <>
-                      <Text style={styles.resultRow}>🦠 {t('aieye.disease')}: <Text style={styles.resultValue}>{result.disease}</Text></Text>
+                      <Text style={styles.resultRow}>{t('aieye.disease')}: <Text style={styles.resultValue}>{result.disease}</Text></Text>
                       {result.confidence != null && (
-                        <Text style={styles.resultRow}>🎯 {t('aieye.confidence')}: <Text style={styles.resultValue}>{result.confidence}%</Text></Text>
+                        <Text style={styles.resultRow}>{t('aieye.confidence')}: <Text style={styles.resultValue}>{result.confidence}%</Text></Text>
                       )}
                       {result.severity != null && (
-                        <Text style={styles.resultRow}>📊 {t('aieye.severity')}: <Text style={styles.resultValue}>{result.severity}%</Text></Text>
+                        <Text style={styles.resultRow}>{t('aieye.severity')}: <Text style={styles.resultValue}>{result.severity}%</Text></Text>
                       )}
                     </>
                   )}
@@ -505,20 +532,20 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
                     {result.composition && (
                       <View style={styles.detailSection}>
-                        <Text style={styles.sectionTitle}>🧪 {t('aieye.initial_composition')}</Text>
+                        <Text style={styles.sectionTitle}>{t('aieye.initial_composition')}</Text>
                         <Text style={styles.sectionText}>{result.composition}</Text>
                       </View>
                     )}
 
                     {result.management && (
                       <View style={styles.detailSection}>
-                        <Text style={styles.sectionTitle}>🛡️ {t('aieye.management_plan')}</Text>
+                        <Text style={styles.sectionTitle}>{t('aieye.management_plan')}</Text>
                         <Text style={styles.sectionText}>{result.management}</Text>
                       </View>
                     )}
 
                     <View style={styles.detailSection}>
-                      <Text style={styles.sectionTitle}>📋 {t('aieye.recommendations')}</Text>
+                      <Text style={styles.sectionTitle}>{t('aieye.recommendations')}</Text>
                       {result.recommendations?.map((rec, i) => (
                         <View key={i} style={styles.recItem}>
                           <Text style={styles.recDot}>•</Text>
@@ -528,9 +555,9 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
                     </View>
                   </View>
 
-                  <Text style={styles.resultRow}>📍 {t('aieye.location')}: <Text style={styles.resultValue}>{result.location}</Text></Text>
-                  <Text style={styles.resultRow}>🕐 {t('aieye.time')}: <Text style={styles.resultValue}>{result.time}</Text></Text>
-                  <Text style={styles.resultRow}>🔎 {t('aieye.source')}: <Text style={[styles.resultValue, { color: Colors.secondary }]}>{t('common.ai_source')}</Text></Text>
+                  <Text style={styles.resultRow}>{t('aieye.location')}: <Text style={styles.resultValue}>{result.location}</Text></Text>
+                  <Text style={styles.resultRow}>{t('aieye.time')}: <Text style={styles.resultValue}>{result.time}</Text></Text>
+                  <Text style={styles.resultRow}>{t('aieye.source')}: <Text style={[styles.resultValue, { color: Colors.secondary }]}>{t('common.ai_source')}</Text></Text>
                 </View>
 
                 <View style={styles.resultActions}>
@@ -572,7 +599,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
                     {item.imagePath ? <Image source={{uri: item.imagePath}} style={styles.scanImage} /> : <Text>🌿</Text>}
                   </View>
                   <View style={{flex: 1}}>
-                    <Text style={styles.scanPlant}>{item.plant}</Text>
+                    <Text style={styles.scanPlant}>{item.disease || t('common.healthy')}</Text>
                     <Text style={[styles.scanStatus, {color: statusColor(item.status)}]}>{statusEmoji(item.status)} {item.disease || 'Healthy'}</Text>
                     <Text style={styles.scanTime}>{item.time}</Text>
                   </View>
@@ -598,7 +625,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: Colors.background },
+  flex: { flex: 1, backgroundColor: '#ffffff' },
 
   clusterBadge: {
     position: 'absolute', top: -4, right: -4,
@@ -757,20 +784,21 @@ const styles = StyleSheet.create({
     alignItems: 'center', gap: Spacing.md, zIndex: 30,
   },
   toggleContainer: {
-    flexDirection: 'row', backgroundColor: Colors.surfaceContainerHigh,
-    borderRadius: Radius.full, padding: 4, elevation: 4, shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.2, shadowRadius: 4,
+    flexDirection: 'row', backgroundColor: '#f2f2f7',
+    borderRadius: Radius.full, padding: 4, elevation: 2, shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1}, shadowOpacity: 0.1, shadowRadius: 2,
   },
   toggleBtn: {
     paddingVertical: 10, borderRadius: Radius.full,
   },
-  toggleText: { ...Typography.labelLg, color: Colors.primary, fontWeight: '700' },
+  toggleText: { ...Typography.labelLg, color: '#007AFF', fontWeight: '700' },
   viewBtn: {
     width: 48, height: 48, borderRadius: 24,
-    backgroundColor: Colors.surfaceContainerHigh,
+    backgroundColor: '#ffffff',
     alignItems: 'center', justifyContent: 'center',
-    elevation: 4, shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.2, shadowRadius: 4,
+    elevation: 2, shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1}, shadowOpacity: 0.1, shadowRadius: 2,
+    borderWidth: 1, borderColor: '#e5e5ea',
   },
   
   fabRow: {
@@ -805,7 +833,7 @@ const styles = StyleSheet.create({
   pulseDotSmall: {
     position: 'absolute', bottom: -2,
     width: 8, height: 8, borderRadius: 4,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#007AFF',
     borderWidth: 1.5, borderColor: '#fff',
   },
 
@@ -853,7 +881,7 @@ const styles = StyleSheet.create({
   pulseDot: {
     position: 'absolute', bottom: -5,
     width: 12, height: 12, borderRadius: 6,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#007AFF',
     borderWidth: 2, borderColor: '#fff',
   },
 
@@ -930,20 +958,29 @@ const styles = StyleSheet.create({
   resultBtnSecondaryText: { ...Typography.labelLg, color: Colors.onSurface },
   resultBtnPrimary: {
     flex: 1, height: 48, borderRadius: Radius.full,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#007AFF',
     alignItems: 'center', justifyContent: 'center',
   },
-  resultBtnPrimaryText: { ...Typography.labelLg, color: Colors.onPrimary, fontWeight: '700' },
+  resultBtnPrimaryText: { ...Typography.labelLg, color: '#ffffff', fontWeight: '700' },
   
   // New RAG UI Styles
   sheetContent: { gap: Spacing.lg, marginTop: Spacing.md },
-  resultMeta: { flexDirection: 'row', gap: Spacing.md, backgroundColor: Colors.surfaceContainerHigh, padding: Spacing.md, borderRadius: Radius.md },
+  resultMeta: { flexDirection: 'row', gap: Spacing.md, backgroundColor: '#f2f2f7', padding: Spacing.md, borderRadius: Radius.md },
   metaItem: { flex: 1, alignItems: 'center' },
-  metaLabel: { ...Typography.labelSm, color: Colors.onSurfaceVariant, marginBottom: 2 },
-  metaValue: { ...Typography.titleMd, color: Colors.onSurface, fontWeight: '700' },
-  detailSection: { backgroundColor: Colors.surfaceContainer, padding: Spacing.md, borderRadius: Radius.md, borderLeftWidth: 4, borderLeftColor: Colors.primary },
+  metaLabel: { ...Typography.labelSm, color: '#8e8e93', marginBottom: 2 },
+  metaValue: { ...Typography.titleMd, color: '#000000', fontWeight: '700' },
+  detailSection: { backgroundColor: '#ffffff', padding: Spacing.md, borderRadius: Radius.md, borderLeftWidth: 2, borderLeftColor: '#e5e5ea' },
   sectionTitle: { ...Typography.titleSm, color: Colors.onSurface, marginBottom: Spacing.xs, fontWeight: '700' },
   sectionText: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, lineHeight: 22 },
   recDot: { color: Colors.primary, marginRight: Spacing.sm, fontSize: 18 },
   recText: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, flex: 1 },
+  
+  liveCoords: {
+    position: 'absolute', bottom: 10, left: 10,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: Radius.sm, borderWidth: 1, borderColor: '#e5e5ea',
+    zIndex: 60,
+  },
+  liveCoordsText: { ...Typography.labelSm, color: '#333', fontVariant: ['tabular-nums'] },
 });

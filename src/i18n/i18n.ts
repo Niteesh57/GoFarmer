@@ -43,12 +43,13 @@ const resources = {
         skip: 'Skip',
         yes: 'Yes',
         no: 'No',
+        delete: 'Delete',
       },
       tabs: {
         weather: 'Weather',
         aieye: 'AI Eye',
         doubts: 'Doubts',
-        radio: 'Radio',
+        radio: 'Guides',
         settings: 'Settings',
       },
       splash: {
@@ -88,6 +89,7 @@ const resources = {
         ai_advisory: 'AI Advisory Plan',
         generate_plan: 'Generate',
         advisory_placeholder: 'Click generate to create a detailed 7-day plan for your crops.',
+        today_insight: 'Farmer Insight for Today',
       },
       aieye: {
         title: 'AI Eye',
@@ -112,6 +114,7 @@ const resources = {
         analyzing_symptoms: 'Scanning Plant...',
         initial_composition: 'Chemical Composition',
         management_plan: 'Management Plan',
+        recommendations: 'Recommendations',
         source: 'Source',
       },
       doubts: {
@@ -136,33 +139,35 @@ const resources = {
         speaking: 'GOFARMER is Speaking...',
         voice_sample: 'This is a sample of {{name}}',
         session: 'Session',
+        vision_active: 'Vision Mode Active',
       },
       radio: {
-        title: 'Radio',
+        title: 'Expert Guides',
         now_playing: 'NOW PLAYING',
         downloaded: 'Downloaded',
         ready: 'Ready',
         speed: 'Speed',
-        create_new: 'Create New Podcast',
+        create_new: 'Create New Guide',
         topic: 'Topic',
         duration: 'Duration',
         language: 'Language',
         style: 'Style',
-        generate: 'GENERATE PODCAST',
+        generate: 'GENERATE GUIDE',
         generating: 'Generating...',
         voice_mode: 'Voice',
         text_mode: 'Text',
-        recent_podcasts: 'Recent Podcasts',
-        no_script: 'No script to play. Generate first.',
-        gen_success: 'Podcast generated! Tap Play to listen.',
+        recent_podcasts: 'Recent Guides',
+        no_script: 'No guide to play. Generate first.',
+        gen_success: 'Guide generated! Tap Play to listen.',
         gen_failed: 'Generation Failed',
-        creating_script: '📝 Creating Script...',
+        creating_script: '📝 Creating Guide...',
         analyzing_topic: '🔍 Analyzing topic...',
         optimizing_content: '🎙 Optimizing content...',
         finalizing: '✅ Finalizing...',
         done: '✅ Done!',
-        select_to_play: 'Select a podcast to play',
-        tap_recent: 'Tap any podcast from the recent list below',
+        select_to_play: 'Select a guide to play',
+        tap_recent: 'Tap any guide from the recent list below',
+        voice: 'Advisor Voice',
       },
       advisor: {
         title: '🤖 AI Crop Advisor',
@@ -275,6 +280,7 @@ const resources = {
         finish_desc: 'Your smart farm assistant is ready to help you grow better.',
         restart_msg: 'If models are downloaded, please close this app completely and reopen it to initialize everything properly.',
         finish_btn: 'Finish & Exit',
+        restart_btn: 'Restart App',
       },
     }
   },
@@ -315,12 +321,13 @@ const resources = {
         skip: 'छोड़ें',
         yes: 'हाँ',
         no: 'नहीं',
+        delete: 'हटाएं',
       },
       tabs: {
         weather: 'मौसम',
         aieye: 'AI आई',
         doubts: 'शंकाएं',
-        radio: 'रेडियो',
+        radio: 'मार्गदर्शक',
         settings: 'सेटिंग्स',
       },
       splash: {
@@ -360,6 +367,7 @@ const resources = {
         ai_advisory: 'AI सलाह योजना',
         generate_plan: 'योजना बनाएं',
         advisory_placeholder: 'अपनी फसलों के लिए 7-दिन की विस्तृत योजना बनाने के लिए "योजना बनाएं" पर क्लिक करें।',
+        today_insight: 'आज की किसान अंतर्दृष्टि',
       },
       aieye: {
         title: 'AI आई',
@@ -384,6 +392,7 @@ const resources = {
         analyzing_symptoms: 'पौधे का स्कैन किया जा रहा है...',
         initial_composition: 'रासायनिक संरचना',
         management_plan: 'प्रबंधन योजना',
+        recommendations: 'सिफारिशें',
         source: 'स्रोत',
       },
       doubts: {
@@ -408,33 +417,35 @@ const resources = {
         speaking: 'GOFARMER बोल रहा है...',
         voice_sample: 'यह {{name}} का एक नमूना है',
         session: 'सत्र',
+        vision_active: 'विजन मोड सक्रिय',
       },
       radio: {
-        title: 'रेडियो',
+        title: 'विशेषज्ञ मार्गदर्शक',
         now_playing: 'अभी चल रहा है',
         downloaded: 'डाउनलोड किया गया',
         ready: 'तैयार',
         speed: 'गति',
-        create_new: 'नया पॉडकास्ट बनाएं',
+        create_new: 'नया मार्गदर्शक बनाएं',
         topic: 'विषय',
         duration: 'अवधि',
         language: 'भाषा',
         style: 'शैली',
-        generate: 'पॉडकास्ट तैयार करें',
+        generate: 'मार्गदर्शक तैयार करें',
         generating: 'तैयार किया जा रहा है...',
         voice_mode: 'आवाज',
         text_mode: 'टेक्स्ट',
-        recent_podcasts: 'हाल के पॉडकास्ट',
-        no_script: 'चलाने के लिए कोई स्क्रिप्ट नहीं है। पहले तैयार करें।',
-        gen_success: 'पॉडकास्ट तैयार! सुनने के लिए प्ले दबाएं।',
+        recent_podcasts: 'हाल के मार्गदर्शक',
+        no_script: 'चलाने के लिए कोई मार्गदर्शक नहीं है। पहले तैयार करें।',
+        gen_success: 'मार्गदर्शक तैयार! सुनने के लिए प्ले दबाएं।',
         gen_failed: 'तैयारी विफल रही',
-        creating_script: '📝 स्क्रिप्ट बनाई जा रही है...',
+        creating_script: '📝 मार्गदर्शक बनाया जा रहा है...',
         analyzing_topic: '🔍 विषय का विश्लेषण किया जा रहा है...',
         optimizing_content: '🎙 सामग्री को अनुकूलित किया जा रहा है...',
         finalizing: '✅ अंतिम रूप दिया जा रहा है...',
         done: '✅ हो गया!',
-        select_to_play: 'चलाने के लिए पॉडकास्ट चुनें',
-        tap_recent: 'नीचे दी गई हाल की सूची से किसी भी पॉडकास्ट पर टैप करें',
+        select_to_play: 'चलाने के लिए मार्गदर्शक चुनें',
+        tap_recent: 'नीचे दी गई हाल की सूची से किसी भी मार्गदर्शक पर टैप करें',
+        voice: 'सलाहकार की आवाज',
       },
       advisor: {
         title: '🤖 AI फसल सलाहकार',
@@ -547,6 +558,7 @@ const resources = {
         finish_desc: 'आपका स्मार्ट फार्म सहायक आपको बेहतर बढ़ने में मदद करने के लिए तैयार है।',
         restart_msg: 'यदि मॉडल डाउनलोड हो गए हैं, तो कृपया सब कुछ ठीक से शुरू करने के लिए इस ऐप को पूरी तरह से बंद करें और फिर से खोलें।',
         finish_btn: 'पूरा करें और बाहर निकलें',
+        restart_btn: 'ऐप रीस्टार्ट करें',
       },
     }
   },
@@ -585,6 +597,9 @@ const resources = {
         gallery: 'Galería',
         no_data: 'No hay datos disponibles',
         skip: 'Saltar',
+        delete: 'Eliminar',
+        yes: 'Sí',
+        no: 'No',
       },
       tabs: {
         weather: 'Clima',
@@ -630,6 +645,7 @@ const resources = {
         ai_advisory: 'Plan de asesoramiento de IA',
         generate_plan: 'Generar',
         advisory_placeholder: 'Haga clic en generar para crear un plan detallado de 7 días para sus cultivos.',
+        today_insight: 'Información para el agricultor de hoy',
       },
       aieye: {
         title: 'Ojo IA',
@@ -654,6 +670,7 @@ const resources = {
         analyzing_symptoms: 'Escaneando planta...',
         initial_composition: 'Composición química',
         management_plan: 'Plan de gestión',
+        recommendations: 'Recomendaciones',
         source: 'Fuente',
       },
       doubts: {
@@ -674,6 +691,11 @@ const resources = {
         session_deleted: 'Sesión eliminada',
         listening: 'Escuchando...',
         stop_listening: 'Toque para procesar',
+        vision_active: 'Modo visión activo',
+        voice_question: 'Pregunta de voz',
+        speaking: 'GOFARMER está hablando...',
+        voice_sample: 'Esta es una muestra de {{name}}',
+        session: 'Sesión',
       },
       radio: {
         title: 'Radio',
@@ -701,6 +723,7 @@ const resources = {
         done: '✅ ¡Hecho!',
         select_to_play: 'Seleccione un podcast para reproducir',
         tap_recent: 'Toque cualquier podcast de la lista reciente a continuación',
+        voice: 'Voz del asesor',
       },
       advisor: {
         title: '🤖 Asesor de cultivos IA',
@@ -798,7 +821,23 @@ const resources = {
         pause: 'Pausar',
         cancel_download: 'Cancelar',
         knowledge_base: 'Base de conocimientos',
-      }
+      },
+      onboarding: {
+        download_title: 'Preparar cerebro IA',
+        download_desc: 'Para funcionar sin conexión, GOFARMER necesita descargar su modelo de IA y su base de conocimientos. Por favor, manténgase conectado a Internet.',
+        start_download: 'Iniciar descarga única',
+        downloading: 'Descargando modelo...',
+        complete: '¡Descarga completa!',
+        setup_title: 'Configuración de la granja',
+        setup_desc: 'Ayúdenos a personalizar su experiencia proporcionando algunos detalles sobre su granja.',
+        already_planted: '¿Ya ha comenzado alguna plantación?',
+        select_crop: 'Seleccione el cultivo que ha plantado:',
+        finish_title: '¡Todo listo!',
+        finish_desc: 'Su asistente agrícola inteligente está listo para ayudarlo a cultivar mejor.',
+        restart_msg: 'Si se descargaron los modelos, cierre esta aplicación por completo y vuelva a abrirla para inicializar todo correctamente.',
+        finish_btn: 'Finalizar y salir',
+        restart_btn: 'Reiniciar aplicación',
+      },
     }
   },
   fr: {
@@ -836,6 +875,9 @@ const resources = {
         gallery: 'Galerie',
         no_data: 'Aucune donnée disponible',
         skip: 'Passer',
+        delete: 'Supprimer',
+        yes: 'Oui',
+        no: 'Non',
       },
       tabs: {
         weather: 'Météo',
@@ -881,6 +923,7 @@ const resources = {
         ai_advisory: 'Plan de conseil IA',
         generate_plan: 'Générer',
         advisory_placeholder: 'Cliquez sur générer pour créer un plan détaillé de 7 jours pour vos cultures.',
+        today_insight: 'Aperçu pour l\'agriculteur aujourd\'hui',
       },
       aieye: {
         title: 'IA Eye',
@@ -905,6 +948,7 @@ const resources = {
         analyzing_symptoms: 'Scan de la plante...',
         initial_composition: 'Composition chimique',
         management_plan: 'Plan de gestion',
+        recommendations: 'Recommandations',
         source: 'Source',
       },
       doubts: {
@@ -925,6 +969,11 @@ const resources = {
         session_deleted: 'Session supprimée',
         listening: 'Écoute...',
         stop_listening: 'Appuyez pour traiter',
+        vision_active: 'Mode vision actif',
+        voice_question: 'Question vocale',
+        speaking: 'GOFARMER parle...',
+        voice_sample: 'Ceci est un échantillon de {{name}}',
+        session: 'Session',
       },
       radio: {
         title: 'Radio',
@@ -952,6 +1001,7 @@ const resources = {
         done: '✅ Terminé !',
         select_to_play: 'Sélectionnez un podcast à lire',
         tap_recent: 'Appuyez sur un podcast de la liste récente ci-dessous',
+        voice: 'Voix du conseiller',
       },
       advisor: {
         title: '🤖 Conseiller cultures IA',
@@ -1049,7 +1099,23 @@ const resources = {
         pause: 'Pause',
         cancel_download: 'Annuler',
         knowledge_base: 'Base de connaissances',
-      }
+      },
+      onboarding: {
+        download_title: 'Préparer le cerveau IA',
+        download_desc: 'Pour fonctionner hors ligne, GOFARMER doit télécharger son modèle IA et sa base de connaissances. Veuillez rester connecté à internet.',
+        start_download: 'Démarrer le téléchargement unique',
+        downloading: 'Téléchargement du modèle...',
+        complete: 'Téléchargement terminé !',
+        setup_title: 'Configuration de la ferme',
+        setup_desc: 'Aidez-nous à personnaliser votre expérience en fournissant quelques détails sur votre ferme.',
+        already_planted: 'Avez-vous déjà commencé une plantation ?',
+        select_crop: 'Sélectionnez la culture que vous avez plantée :',
+        finish_title: 'Tout est prêt !',
+        finish_desc: 'Votre assistant agricole intelligent est prêt à vous aider à mieux cultiver.',
+        restart_msg: 'Si les modèles sont téléchargés, veuillez fermer complètement cette application et la rouvrir pour tout initialiser correctement.',
+        finish_btn: 'Terminer et quitter',
+        restart_btn: "Redémarrer l'application",
+      },
     }
   },
   zh: {
@@ -1087,6 +1153,9 @@ const resources = {
         gallery: '相册',
         no_data: '暂无数据',
         skip: '跳过',
+        delete: '删除',
+        yes: '是',
+        no: '否',
       },
       tabs: {
         weather: '天气',
@@ -1132,6 +1201,7 @@ const resources = {
         ai_advisory: 'AI 咨询计划',
         generate_plan: '生成',
         advisory_placeholder: '点击生成，为您的作物创建详细的 7 天计划。',
+        today_insight: '今日农夫见解',
       },
       aieye: {
         title: 'AI之眼',
@@ -1156,6 +1226,7 @@ const resources = {
         analyzing_symptoms: '正在扫描植物...',
         initial_composition: '化学成分',
         management_plan: '管理计划',
+        recommendations: '建议',
         source: '来源',
       },
       doubts: {
@@ -1176,6 +1247,11 @@ const resources = {
         session_deleted: '会话已删除',
         listening: '正在倾听...',
         stop_listening: '点击处理',
+        vision_active: '视觉模式已激活',
+        voice_question: '语音提问',
+        speaking: 'GOFARMER 正在说话...',
+        voice_sample: '这是 {{name}} 的声音示例',
+        session: '会话',
       },
       radio: {
         title: '电台',
@@ -1203,6 +1279,7 @@ const resources = {
         done: '✅ 完成！',
         select_to_play: '选择要播放的播客',
         tap_recent: '点击下方最近列表中的任何播客',
+        voice: '顾问声音',
       },
       advisor: {
         title: '🤖 AI 作物顾问',
@@ -1300,7 +1377,23 @@ const resources = {
         pause: '暂停',
         cancel_download: '取消',
         knowledge_base: '知识库',
-      }
+      },
+      onboarding: {
+        download_title: '准备 AI 大脑',
+        download_desc: '为了离线工作，GOFARMER 需要下载其 AI 模型和知识库。请保持网络连接。',
+        start_download: '开始一次性下载',
+        downloading: '正在下载模型...',
+        complete: '下载完成！',
+        setup_title: '农场设置',
+        setup_desc: '请提供一些关于您农场的详细信息，帮助我们为您提供个性化体验。',
+        already_planted: '您是否已经开始种植作物？',
+        select_crop: '选择您已种植的作物：',
+        finish_title: '准备就绪！',
+        finish_desc: '您的智能农场助手已准备好帮助您更好地种植。',
+        restart_msg: '如果模型已下载，请完全关闭此应用程序并重新打开以正确初始化所有内容。',
+        finish_btn: '完成并退出',
+        restart_btn: '重启应用',
+      },
     }
   },
   ja: {
@@ -1338,6 +1431,9 @@ const resources = {
         gallery: 'ギャラリー',
         no_data: 'データがありません',
         skip: 'スキップ',
+        delete: '削除',
+        yes: 'はい',
+        no: 'いいえ',
       },
       tabs: {
         weather: '天気',
@@ -1383,6 +1479,7 @@ const resources = {
         ai_advisory: 'AI アドバイザリープラン',
         generate_plan: '生成',
         advisory_placeholder: '生成をクリックして、作物の詳細な 7 日間の計画を作成します。',
+        today_insight: '今日の農家向けインサイト',
       },
       aieye: {
         title: 'AIアイ',
@@ -1407,6 +1504,7 @@ const resources = {
         analyzing_symptoms: '植物をスキャン中...',
         initial_composition: '化学組成',
         management_plan: '管理計画',
+        recommendations: '推奨事項',
         source: 'ソース',
       },
       doubts: {
@@ -1427,6 +1525,11 @@ const resources = {
         session_deleted: 'セッションを削除しました',
         listening: '聴取中...',
         stop_listening: 'タップして処理',
+        vision_active: 'ビジョンモード有効',
+        voice_question: '音声質問',
+        speaking: 'GOFARMER が発話中...',
+        voice_sample: 'これは {{name}} の音声サンプルです',
+        session: 'セッション',
       },
       radio: {
         title: 'ラジオ',
@@ -1454,6 +1557,7 @@ const resources = {
         done: '✅ 完了！',
         select_to_play: '再生するポッドキャストを選択',
         tap_recent: '下の履歴リストからポッドキャストをタップしてください',
+        voice: 'アドバイザーの声',
       },
       advisor: {
         title: '🤖 AI 作物アドバイザー',
@@ -1466,6 +1570,9 @@ const resources = {
         not_ready: 'AI アドバイザーの準備ができていません。しばらくお待ちください。',
         enter_crop: '作物の名前を入力してください。',
         select_date_error: '植え付け日を選択してください。',
+        consultant_title: '気象コンサルタント',
+        consultant_desc: '天候に基づいた植え付けや散布について質問できます。',
+        voice_placeholder: 'マイクをタップして「今日は農薬散布に適していますか？」と質問する',
       },
       insights: {
         irrigation: '灌漑',
@@ -1548,7 +1655,23 @@ const resources = {
         pause: '一時停止',
         cancel_download: 'キャンセル',
         knowledge_base: '知識ベース',
-      }
+      },
+      onboarding: {
+        download_title: 'AI ブレインの準備',
+        download_desc: 'オフラインで動作させるため、GOFARMER は AI モデルと知識ベースをダウンロードする必要があります。インターネット接続を維持してください。',
+        start_download: '一括ダウンロードを開始',
+        downloading: 'モデルをダウンロード中...',
+        complete: 'ダウンロード完了！',
+        setup_title: '農場の設定',
+        setup_desc: '農場の詳細を入力して、体験をパーソナライズしましょう。',
+        already_planted: '既に作物の植え付けを開始していますか？',
+        select_crop: '植え付けた作物を選択してください：',
+        finish_title: '準備完了！',
+        finish_desc: 'スマート農業アシスタントがサポートを開始する準備ができました。',
+        restart_msg: 'モデルがダウンロードされた場合は、アプリを完全に閉じて再度開き、すべてを正しく初期化してください。',
+        finish_btn: '完了して終了',
+        restart_btn: 'アプリを再起動',
+      },
     }
   },
   te: {
@@ -1586,6 +1709,9 @@ const resources = {
         gallery: 'గ్యాలరీ',
         no_data: 'సమాచారం అందుబాటులో లేదు',
         skip: 'దాటవేయి',
+        delete: 'తొలగించు',
+        yes: 'అవును',
+        no: 'కాదు',
       },
       tabs: {
         weather: 'వాతావరణం',
@@ -1631,6 +1757,7 @@ const resources = {
         ai_advisory: 'AI సలహా ప్రణాళిక',
         generate_plan: 'రూపొందించు',
         advisory_placeholder: 'మీ పంటల కోసం వివరణాత్మక 7 రోజుల ప్రణాళికను రూపొందించడానికి నొక్కండి.',
+        today_insight: 'ఈ రోజు రైతు సమాచారం',
       },
       aieye: {
         title: 'AI ఐ',
@@ -1655,6 +1782,7 @@ const resources = {
         analyzing_symptoms: 'మొక్కను స్కాన్ చేస్తోంది...',
         initial_composition: 'రసాయన మిశ్రమం',
         management_plan: 'నిర్వహణ ప్రణాళిక',
+        recommendations: 'సిఫార్సులు',
         source: 'మూలం',
       },
       doubts: {
@@ -1675,6 +1803,11 @@ const resources = {
         session_deleted: 'సెషన్ తొలగించబడింది',
         listening: 'వింటోంది...',
         stop_listening: 'ప్రాసెస్ చేయడానికి నొక్కండి',
+        vision_active: 'విజన్ మోడ్ సక్రియం చేయబడింది',
+        voice_question: 'వాయిస్ ప్రశ్న',
+        speaking: 'GOFARMER మాట్లాడుతోంది...',
+        voice_sample: 'ఇది {{name}} యొక్క వాయిస్ నమూనా',
+        session: 'సెషన్',
       },
       radio: {
         title: 'రేడియో',
@@ -1702,6 +1835,7 @@ const resources = {
         done: '✅ పూర్తయింది!',
         select_to_play: 'ప్లే చేయడానికి పాడ్‌కాస్ట్ ఎంచుకోండి',
         tap_recent: 'ఇటీవలి జాబితా నుండి పాడ్‌కాస్ట్‌ను నొక్కండి',
+        voice: 'సలహాదారు వాయిస్',
       },
       advisor: {
         title: '🤖 AI పంట సలహాదారు',
@@ -1799,7 +1933,23 @@ const resources = {
         pause: 'నిలిపివేయి',
         cancel_download: 'రద్దు చేయి',
         knowledge_base: 'నాలెడ్జ్ బేస్',
-      }
+      },
+      onboarding: {
+        download_title: 'AI బ్రెయిన్ సిద్ధం చేయండి',
+        download_desc: 'ఆఫ్‌లైన్‌లో పని చేయడానికి, GOFARMER దాని AI మోడల్ మరియు నాలెడ్జ్ బేస్‌ను డౌన్‌లోడ్ చేయాలి. దయచేసి ఇంటర్నెట్‌కు కనెక్ట్ అయి ఉండండి.',
+        start_download: 'వన్-టైమ్ డౌన్‌లోడ్ ప్రారంభించండి',
+        downloading: 'మోడల్ డౌన్‌లోడ్ అవుతోంది...',
+        complete: 'డౌన్‌లోడ్ పూర్తయింది!',
+        setup_title: 'పొలం సెటప్',
+        setup_desc: 'మీ పొలం గురించిన కొన్ని వివరాలను అందించడం ద్వారా అనుభవాన్ని మెరుగుపరచడంలో మాకు సహాయపడండి.',
+        already_planted: 'మీరు ఇప్పటికే ఏదైనా పంట నాటడం ప్రారంభించారా?',
+        select_crop: 'మీరు నాటిన పంటను ఎంచుకోండి:',
+        finish_title: 'అంతా సిద్ధం!',
+        finish_desc: 'మీ స్మార్ట్ ఫార్మ్ అసిస్టెంట్ మీకు సహాయం చేయడానికి సిద్ధంగా ఉంది.',
+        restart_msg: 'మోడల్‌లు డౌన్‌లోడ్ చేయబడితే, దయచేసి ఈ యాప్‌ను పూర్తిగా మూసివేసి, సరిగ్గా ప్రారంభించడానికి దాన్ని మళ్లీ తెరవండి.',
+        finish_btn: 'పూర్తి చేసి నిష్క్రమించండి',
+        restart_btn: 'యాప్‌ని రీస్టార్ట్ చేయండి',
+      },
     }
   },
   kn: {
@@ -1837,6 +1987,9 @@ const resources = {
         gallery: 'ಗ್ಯಾಲರಿ',
         no_data: 'ಮಾಹಿತಿ ಲಭ್ಯವಿಲ್ಲ',
         skip: 'ಬಿಟ್ಟುಬಿಡು',
+        delete: 'ಅಳಿಸಿ',
+        yes: 'ಹೌದು',
+        no: 'ಇಲ್ಲ',
       },
       tabs: {
         weather: 'ಹವಾಮಾನ',
@@ -1882,6 +2035,7 @@ const resources = {
         ai_advisory: 'AI ಸಲಹಾ ಯೋಜನೆ',
         generate_plan: 'ರೂಪಿಸಿ',
         advisory_placeholder: 'ನಿಮ್ಮ ಬೆಳೆಗಳಿಗೆ 7 ದಿನಗಳ ವಿವರವಾದ ಯೋಜನೆಯನ್ನು ರೂಪಿಸಲು ಟ್ಯಾಪ್ ಮಾಡಿ.',
+        today_insight: 'ಇಂದಿನ ರೈತರ ಮಾಹಿತಿ',
       },
       aieye: {
         title: 'AI ಐ',
@@ -1906,6 +2060,7 @@ const resources = {
         analyzing_symptoms: 'ಸಸ್ಯವನ್ನು ಸ್ಕ್ಯಾನ್ ಮಾಡಲಾಗುತ್ತಿದೆ...',
         initial_composition: 'ರಾಸಾಯನಿಕ ಸಂಯೋಜನೆ',
         management_plan: 'ನಿರ್ವಹಣಾ ಯೋಜನೆ',
+        recommendations: 'ಶಿಫಾರಸುಗಳು',
         source: 'ಮೂಲ',
       },
       doubts: {
@@ -1926,6 +2081,11 @@ const resources = {
         session_deleted: 'ಸೆಷನ್ ಅಳಿಸಲಾಗಿದೆ',
         listening: 'ಕೇಳಿಸಿಕೊಳ್ಳುತ್ತಿದೆ...',
         stop_listening: 'ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲು ಟ್ಯಾಪ್ ಮಾಡಿ',
+        vision_active: 'ವಿಷನ್ ಮೋಡ್ ಸಕ್ರಿಯವಾಗಿದೆ',
+        voice_question: 'ಧ್ವನಿ ಪ್ರಶ್ನೆ',
+        speaking: 'GOFARMER ಮಾತನಾಡುತ್ತಿದೆ...',
+        voice_sample: 'ಇದು {{name}} ಅವರ ಧ್ವನಿ ಮಾದರಿ',
+        session: 'ಸೆಷನ್',
       },
       radio: {
         title: 'ರೇಡಿಯೋ',
@@ -1953,6 +2113,7 @@ const resources = {
         done: '✅ ಮುಗಿಯಿತು!',
         select_to_play: 'ಪ್ಲೇ ಮಾಡಲು ಪಾಡ್‌ಕಾಸ್ಟ್ ಆಯ್ಕೆಮಾಡಿ',
         tap_recent: 'ಇತ್ತೀಚಿನ ಪಟ್ಟಿಯಿಂದ ಪಾಡ್‌ಕಾಸ್ಟ್ ಟ್ಯಾಪ್ ಮಾಡಿ',
+        voice: 'ಸಲಹೆಗಾರರ ಧ್ವನಿ',
       },
       advisor: {
         title: '🤖 AI ಬೆಳೆ ಸಲಹೆಗಾರ',
@@ -2037,6 +2198,8 @@ const resources = {
         failed_clear: 'ಡೇಟಾ ಅಳಿಸಲು ವಿಫಲವಾಗಿದೆ',
         delete_model_title: 'ಮಾಡೆಲ್ ಅಳಿಸಿ',
         delete_model_message: '{{name}} ಅಳಿಸಬೇಕೆ?',
+        redownload_title: 'ಮಾಡೆಲ್ ಮರು-ಡೌನ್‌ಲೋಡ್ ಮಾಡಬೇಕೆ?',
+        redownload_message: 'ಈ ಮಾಡೆಲ್ ಈಗಾಗಲೇ ಅಸ್ತಿತ್ವದಲ್ಲಿದೆ. ನೀವು ಅಳಿಸಿ ಮತ್ತೆ ಡೌನ್‌ಲೋಡ್ ಮಾಡಲು ಬಯಸುವಿರಾ?',
         model_deleted: '{{name}} ಅಳಿಸಲಾಗಿದೆ',
         download_paused: 'ಡೌನ್‌ಲೋಡ್ ವಿರಾಮಗೊಳಿಸಲಾಗಿದೆ',
         not_downloaded: 'ಡೌನ್‌ಲೋಡ್ ಮಾಡಿಲ್ಲ',
@@ -2048,7 +2211,23 @@ const resources = {
         pause: 'ವಿರಾಮಗೊಳಿಸಿ',
         cancel_download: 'ರದ್ದುಮಾಡಿ',
         knowledge_base: 'ಜ್ಞಾನದ ಮೂಲ',
-      }
+      },
+      onboarding: {
+        download_title: 'AI ಬ್ರೇನ್ ಸಿದ್ಧಪಡಿಸಿ',
+        download_desc: 'ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿ ಕೆಲಸ ಮಾಡಲು, GOFARMER ತನ್ನ AI ಮಾಡೆಲ್ ಮತ್ತು ಜ್ಞಾನದ ಮೂಲವನ್ನು ಡೌನ್‌ಲೋಡ್ ಮಾಡಬೇಕಾಗಿದೆ. ದಯವಿಟ್ಟು ಇಂಟರ್ನೆಟ್‌ಗೆ ಸಂಪರ್ಕದಲ್ಲಿರಿ.',
+        start_download: 'ಒನ್-ಟೈಮ್ ಡೌನ್‌ಲೋಡ್ ಪ್ರಾರಂಭಿಸಿ',
+        downloading: 'ಮಾಡೆಲ್ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ...',
+        complete: 'ಡೌನ್‌ಲೋಡ್ ಪೂರ್ಣಗೊಂಡಿದೆ!',
+        setup_title: 'ಫಾರ್ಮ್ ಸೆಟಪ್',
+        setup_desc: 'ನಿಮ್ಮ ಫಾರ್ಮ್ ಬಗ್ಗೆ ಕೆಲವು ವಿವರಗಳನ್ನು ಒದಗಿಸುವ ಮೂಲಕ ನಿಮ್ಮ ಅನುಭವವನ್ನು ವೈಯಕ್ತೀಕರಿಸಲು ನಮಗೆ ಸಹಾಯ ಮಾಡಿ.',
+        already_planted: 'ನೀವು ಈಗಾಗಲೇ ಯಾವುದಾದರೂ ಬೆಳೆಯನ್ನು ನೆಡಲು ಪ್ರಾರಂಭಿಸಿದ್ದೀರಾ?',
+        select_crop: 'ನೀವು ನೆಟ್ಟ ಬೆಳೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ:',
+        finish_title: 'ಎಲ್ಲಾ ಸಿದ್ಧವಾಗಿದೆ!',
+        finish_desc: 'ನಿಮ್ಮ ಸ್ಮಾರ್ಟ್ ಫಾರ್ಮ್ ಸಹಾಯಕ ನಿಮಗೆ ಸಹಾಯ ಮಾಡಲು ಸಿದ್ಧವಾಗಿದೆ.',
+        restart_msg: 'ಮಾಡೆಲ್‌ಗಳನ್ನು ಡೌನ್‌ಲೋಡ್ ಮಾಡಿದ್ದರೆ, ದಯವಿಟ್ಟು ಈ ಆ್ಯಪ್ ಅನ್ನು ಸಂಪೂರ್ಣವಾಗಿ ಮುಚ್ಚಿ ಮತ್ತು ಸರಿಯಾಗಿ ಪ್ರಾರಂಭಿಸಲು ಅದನ್ನು ಮತ್ತೆ ತೆರೆಯಿರಿ.',
+        finish_btn: 'ಮುಗಿಸಿ ಮತ್ತು ನಿರ್ಗಮಿಸಿ',
+        restart_btn: 'ಆ್ಯಪ್ ಮರುಪ್ರಾರಂಭಿಸಿ',
+      },
     }
   },
   sv: {
@@ -2086,6 +2265,9 @@ const resources = {
         gallery: 'Galleri',
         no_data: 'Ingen data tillgänglig',
         skip: 'Hoppa över',
+        delete: 'Radera',
+        yes: 'Ja',
+        no: 'Nej',
       },
       tabs: {
         weather: 'Väder',
@@ -2131,6 +2313,7 @@ const resources = {
         ai_advisory: 'AI-rådgivningsplan',
         generate_plan: 'Generera',
         advisory_placeholder: 'Klicka på generera för en 7-dagars plan.',
+        today_insight: 'Dagens bondens insikt',
       },
       aieye: {
         title: 'AI-öga',
@@ -2155,6 +2338,7 @@ const resources = {
         analyzing_symptoms: 'Skannar växt...',
         initial_composition: 'Kemisk sammansättning',
         management_plan: 'Hanteringsplan',
+        recommendations: 'Rekommendationer',
         source: 'Källa',
       },
       doubts: {
@@ -2175,6 +2359,11 @@ const resources = {
         session_deleted: 'Session raderad',
         listening: 'Lyssnar...',
         stop_listening: 'Tryck för att bearbeta',
+        vision_active: 'Visuellt läge aktivt',
+        voice_question: 'Röstfråga',
+        speaking: 'GOFARMER pratar...',
+        voice_sample: 'Detta är ett röstprov av {{name}}',
+        session: 'Session',
       },
       radio: {
         title: 'Radio',
@@ -2202,6 +2391,7 @@ const resources = {
         done: '✅ Klar!',
         select_to_play: 'Välj podcast att spela',
         tap_recent: 'Tryck på en podcast i listan nedan',
+        voice: 'Rådgivarens röst',
       },
       advisor: {
         title: '🤖 AI-växtrådgivare',
@@ -2299,7 +2489,23 @@ const resources = {
         pause: 'Pausa',
         cancel_download: 'Avbryt',
         knowledge_base: 'Kunskapsbas',
-      }
+      },
+      onboarding: {
+        download_title: 'Förbered AI-hjärnan',
+        download_desc: 'För att fungera offline behöver GOFARMER ladda ner sin AI-modell och kunskapsbas. Vänligen var ansluten till internet.',
+        start_download: 'Starta engångsnedladdning',
+        downloading: 'Laddar ner modell...',
+        complete: 'Nedladdning klar!',
+        setup_title: 'Gårdsinställning',
+        setup_desc: 'Hjälp oss att anpassa din upplevelse genom att ge några detaljer om din gård.',
+        already_planted: 'Har du redan börjat plantera en gröda?',
+        select_crop: 'Välj den gröda du har planterat:',
+        finish_title: 'Allt är redo!',
+        finish_desc: 'Din smarta gårdsassistent är redo att hjälpa dig.',
+        restart_msg: 'Om modellerna har laddats ner, stäng appen helt och öppna den igen för korrekt initiering.',
+        finish_btn: 'Slutför och avsluta',
+        restart_btn: 'Starta om appen',
+      },
     }
   },
   de: {
@@ -2337,6 +2543,9 @@ const resources = {
         gallery: 'Galerie',
         no_data: 'Keine Daten verfügbar',
         skip: 'Überspringen',
+        delete: 'Löschen',
+        yes: 'Ja',
+        no: 'Nein',
       },
       tabs: {
         weather: 'Wetter',
@@ -2382,6 +2591,7 @@ const resources = {
         ai_advisory: 'KI-Beratungsplan',
         generate_plan: 'Erstellen',
         advisory_placeholder: 'Klicken zum Erstellen eines 7-Tage-Plans.',
+        today_insight: 'Heutige Bauern-Erkenntnis',
       },
       aieye: {
         title: 'KI-Auge',
@@ -2406,6 +2616,7 @@ const resources = {
         analyzing_symptoms: 'Scanne Pflanze...',
         initial_composition: 'Chemische Zusammensetzung',
         management_plan: 'Managementplan',
+        recommendations: 'Empfehlungen',
         source: 'Quelle',
       },
       doubts: {
@@ -2426,6 +2637,11 @@ const resources = {
         session_deleted: 'Sitzung gelöscht',
         listening: 'Höre zu...',
         stop_listening: 'Tippen zum Verarbeiten',
+        vision_active: 'Sichtmodus aktiv',
+        voice_question: 'Sprachfrage',
+        speaking: 'GOFARMER spricht...',
+        voice_sample: 'Dies ist eine Sprachprobe von {{name}}',
+        session: 'Sitzung',
       },
       radio: {
         title: 'Radio',
@@ -2453,6 +2669,7 @@ const resources = {
         done: '✅ Fertig!',
         select_to_play: 'Podcast zum Abspielen wählen',
         tap_recent: 'Tippe auf einen Podcast aus der Liste unten',
+        voice: 'Stimme des Beraters',
       },
       advisor: {
         title: '🤖 KI-Anbauberater',
@@ -2550,26 +2767,68 @@ const resources = {
         pause: 'Pause',
         cancel_download: 'Abbrechen',
         knowledge_base: 'Wissensbasis',
-      }
+      },
+      onboarding: {
+        download_title: 'KI-Gehirn vorbereiten',
+        download_desc: 'Um offline zu arbeiten, muss GOFARMER sein KI-Modell und seine Wissensbasis herunterladen. Bitte bleiben Sie mit dem Internet verbunden.',
+        start_download: 'Einmaligen Download starten',
+        downloading: 'Modell wird heruntergeladen...',
+        complete: 'Download abgeschlossen!',
+        setup_title: 'Hofeinstellung',
+        setup_desc: 'Helfen Sie uns, Ihr Erlebnis zu personalisieren, indem Sie einige Details zu Ihrem Hof angeben.',
+        already_planted: 'Haben Sie bereits mit dem Anbau einer Sorte begonnen?',
+        select_crop: 'Wählen Sie die angebaute Sorte:',
+        finish_title: 'Alles ist bereit!',
+        finish_desc: 'Ihr intelligenter Hofassistent ist bereit, Ihnen zu helfen.',
+        restart_msg: 'Wenn die Modelle heruntergeladen wurden, schließen Sie diese App bitte vollständig und öffnen Sie sie erneut, um alles korrekt zu initialisieren.',
+        finish_btn: 'Beenden und verlassen',
+        restart_btn: 'App neu starten',
+      },
     }
   }
 };
 
-const initI18n = async () => {
-  const savedLanguage = await AsyncStorage.getItem(LANGUAGE_KEY);
+/**
+ * Initialises the i18next library with all supported language resources.
+ *
+ * Reads the user's previously saved language preference from AsyncStorage and
+ * sets it as the active language. Falls back to English if no preference is found
+ * or if AsyncStorage is unavailable.
+ *
+ * This function is exported so that `App.tsx` can `await` it before rendering
+ * the root navigator, eliminating the startup race condition where UI components
+ * render before translations are loaded.
+ *
+ * @returns A promise that resolves when i18next is fully initialised.
+ */
+export const initI18n = async (): Promise<void> => {
+  let savedLanguage: string | null = null;
+  try {
+    savedLanguage = await AsyncStorage.getItem(LANGUAGE_KEY);
+  } catch (e) {
+    // AsyncStorage read failure — proceed with the default language (English).
+    console.warn('[i18n] Failed to read saved language from AsyncStorage:', e);
+  }
 
-  i18n
+  await i18n
     .use(initReactI18next)
     .init({
       resources,
       lng: savedLanguage || 'en',
       fallbackLng: 'en',
       interpolation: {
+        // React already escapes output; disable i18next double-escaping.
         escapeValue: false,
       },
     });
 };
 
-initI18n();
+// Trigger initialisation immediately when the module is imported.
+// The `.catch` ensures that any unexpected errors surface in the console
+// rather than being swallowed silently, which would cause the app to render
+// with missing translations and no visible error.
+initI18n().catch((e) => {
+  console.error('[i18n] Critical: i18next initialisation failed.', e);
+});
 
 export default i18n;

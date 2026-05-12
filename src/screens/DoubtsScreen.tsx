@@ -15,35 +15,23 @@ import { Toast } from '../components/Toast';
 import { Colors, Typography, Spacing, Radius } from '../theme/theme';
 import { getLangCode } from '../utils/langHelper';
 import { SessionService, ChatSession, AppMessage, MessageMetadata } from '../services/SessionService';
-import { CactusLMMessage } from 'cactus-react-native';
+import { CactusLMMessage, CactusLM } from 'cactus-react-native';
 import { OrbAnimation } from '../components/OrbAnimation';
 import { optimizeImageForLLM } from '../utils/imageHelper';
 
 interface DoubtsScreenProps {
   llmComplete: (prompt: string, onToken?: (tok: string) => void, audioData?: number[], imagePath?: string) => Promise<string>;
   isLlmReady: boolean;
+  lm?: CactusLM;
 }
 
 const AGRI_SYSTEM_PROMPT =
-  'You are an expert agricultural advisor AI assistant for Indian farmers. ' +
-  'Provide clear, practical, and actionable farming advice in simple language. ' +
-  'Focus on crops, weather, irrigation, pest management, fertilizers, and harvest timing. ' +
-  'Keep answers VERY short and concise (maximum 2-3 sentences).\n' +
-  'STRICT RULE: Do NOT use any Markdown formatting like asterisks (*), hashes (#), or bolding. ' +
-  'STRICT RULE: Do NOT echo the user question. Do NOT use labels like "Assistant:", "Farmer:", "User:", or "Answer:". ' +
-  'STRICT RULE: Provide ONLY the direct answer. ' +
-  'Use ONLY the NATIVE SCRIPT of the target language. Do NOT use English letters or transliteration (e.g., use Devanagari for Hindi, Telugu script for Telugu, etc.). ' +
-  'Use ONLY plain text. Avoid all non-alphanumeric characters that interfere with voice reading.';
+  'You are an Agricultural Advisor. Generate an educational and helpful advisory script answering the farmer\'s query. ' +
+  'Use only plain text (no markdown) and the native script of the language.';
 
 const VISION_SYSTEM_PROMPT =
-  'Help the farmer with his queries. Provide clear, practical, and helpful answers. ' +
-  'You are NOT restricted to farming only; answer any questions the user has about anything in the image or otherwise. ' +
-  'Keep answers VERY short and concise (maximum 3-4 sentences).\n' +
-  'STRICT RULE: Do NOT use any Markdown formatting like asterisks (*), hashes (#), or bolding. ' +
-  'STRICT RULE: Do NOT echo the user question. Do NOT use labels like "Assistant:", "Farmer:", "User:", or "Answer:". ' +
-  'STRICT RULE: Provide ONLY the direct answer. ' +
-  'Use ONLY the NATIVE SCRIPT of the target language. Do NOT use English letters or transliteration. ' +
-  'Use ONLY plain text. Avoid all non-alphanumeric characters that interfere with voice reading.';
+  'You are an Agricultural Advisor. Generate an educational and helpful advisory script based on the image and query. ' +
+  'Use only plain text (no markdown) and the native script of the language.';
 
 
 const base64ToPcm = (b64: string): number[] => {
@@ -67,7 +55,7 @@ const base64ToPcm = (b64: string): number[] => {
   return Array.from(bytes);
 };
 
-export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenProps) {
+export default function DoubtsScreen({ llmComplete, isLlmReady, lm }: DoubtsScreenProps) {
   const { t, i18n } = useTranslation();
 
   // -- State --
@@ -89,6 +77,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
   const [visionImagePath, setVisionImagePath] = useState<string | null>(null);
 
   const cameraRef = useRef<any>(null);
+  const ttsBufferRef = useRef<string>('');
 
   // Fallback permission request for camera-kit on Android
   useEffect(() => {
@@ -239,29 +228,22 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
       const basePrompt = visionImagePath ? VISION_SYSTEM_PROMPT : AGRI_SYSTEM_PROMPT;
       const systemPrompt = `${basePrompt}\n\nSTRICT RULE: You MUST answer ENTIRELY in the following language: ${contentLangStr}.`;
 
-
-      // Get history from active session if exists
-      const history = activeSession ? activeSession.messages : [];
-      const updatedMessagesWithUser = [...history, userMsg];
-
-      const fullPrompt = `${systemPrompt}\n\n${updatedMessagesWithUser.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}\nAssistant:`;
-
-      let ttsBuffer = '';
+      ttsBufferRef.current = '';
       let tokenCount = 0;
       let ttft = 0;
       const startTime = Date.now();
 
-      const aiResponse = await llmComplete(fullPrompt, (tok) => {
+      let aiResponse = '';
+
+      const handleToken = (tok: string) => {
         const now = Date.now();
-        if (tokenCount === 0) {
-          ttft = (now - startTime) / 1000;
-        }
+        if (tokenCount === 0) ttft = (now - startTime) / 1000;
         tokenCount++;
 
         setIsAnalyzing(false);
         setStreamingAnswer(prev => prev + tok);
 
-        // Update real-time metrics (optional but nice)
+        // Update metrics
         const elapsed = (now - startTime) / 1000;
         const currentTokPerSec = tokenCount / (elapsed - ttft || 0.1);
         setCurrentMetrics({
@@ -271,13 +253,41 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
           tokensPerSecond: parseFloat(currentTokPerSec.toFixed(1))
         });
 
-        ttsBuffer += tok;
-        if (/[.,!?\n]/.test(tok) || ttsBuffer.length > 50) {
-          const chunk = ttsBuffer.trim().replace(/[*#_~]/g, '');
+        ttsBufferRef.current += tok;
+        if (/[.,!?\n]/.test(tok) || ttsBufferRef.current.length > 50) {
+          const chunk = ttsBufferRef.current.trim().replace(/[*#_~]/g, '');
           if (chunk.length > 1) Tts.speak(chunk);
-          ttsBuffer = '';
+          ttsBufferRef.current = '';
         }
-      }, audioData, visionImagePath || undefined);
+      };
+
+      if (visionImagePath && lm) {
+        // Isolated Vision compilation without tool calling
+        const messages: CactusLMMessage[] = [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: text || t('doubts.voice_question'), images: [visionImagePath] }
+        ];
+
+        const result = await lm.complete({
+          messages,
+          audio: audioData,
+          options: {
+            temperature: 0.1,
+            maxTokens: 512,
+            topP: 0.9,
+            topK: 40,
+            enableThinking: false,
+          },
+          onToken: handleToken,
+        });
+        aiResponse = result.response;
+      } else {
+        const history = activeSession ? activeSession.messages : [];
+        const updatedMessagesWithUser = [...history, userMsg];
+        const fullPrompt = `${systemPrompt}\n\n${updatedMessagesWithUser.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}\nAssistant:`;
+
+        aiResponse = await llmComplete(fullPrompt, handleToken, audioData, undefined);
+      }
 
       const endTime = Date.now();
       const totalTime = (endTime - startTime) / 1000;
@@ -292,7 +302,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady }: DoubtsScreenPr
 
       setCurrentMetrics(finalMetrics);
 
-      if (ttsBuffer.trim().length > 1) Tts.speak(ttsBuffer.trim().replace(/[*#_~]/g, ''));
+      if (ttsBufferRef.current.trim().length > 1) Tts.speak(ttsBufferRef.current.trim().replace(/[*#_~]/g, ''));
       
       let finalAIResponse = aiResponse.trim();
       
@@ -655,7 +665,7 @@ const styles = StyleSheet.create({
   },
   recordBtnActive: { backgroundColor: '#f44336' },
   recordBtnDisabled: { backgroundColor: Colors.outlineVariant, opacity: 0.6 },
-  recordBtnIcon: { fontSize: 32, color: '#fff' },
+  recordBtnIcon: { fontSize: 32, color: '#000' },
   chatToggle: { width: 50, height: 50, borderRadius: 25, backgroundColor: Colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
   chatToggleIcon: { fontSize: 24 },
   newBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: Colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
@@ -669,11 +679,11 @@ const styles = StyleSheet.create({
   userBubble: { backgroundColor: Colors.surfaceContainerHigh, borderBottomLeftRadius: 2, borderWidth: 1, borderColor: Colors.outlineVariant },
   aiBubble: { backgroundColor: Colors.primary, borderBottomRightRadius: 2 },
   userMsgText: { ...Typography.bodyLg, color: Colors.onSurface },
-  aiMsgText: { ...Typography.bodyLg, color: '#fff' },
+  aiMsgText: { ...Typography.bodyLg, color: '#000' },
 
   chatFabContainer: { position: 'absolute', bottom: 30, right: 20 },
   voiceSwitchFab: { width: 56, height: 56, borderRadius: 28, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 6 },
-  fabIcon: { fontSize: 24, color: '#fff' },
+  fabIcon: { fontSize: 24, color: '#000' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   historyPanel: { backgroundColor: Colors.background, height: '80%', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
@@ -692,7 +702,7 @@ const styles = StyleSheet.create({
   voiceItemName: { ...Typography.bodyLg, color: Colors.onSurface },
   voiceItemLang: { ...Typography.labelSm, color: Colors.onSurfaceVariant },
   doneBtn: { marginTop: 20, padding: 16, backgroundColor: Colors.primary, borderRadius: Radius.md, alignItems: 'center' },
-  doneBtnText: { color: '#fff', fontWeight: '700' },
+  doneBtnText: { color: '#000', fontWeight: '700' },
 
   metricsPill: {
     flexDirection: 'row',
@@ -733,12 +743,12 @@ const styles = StyleSheet.create({
   metricsValue: {
     ...Typography.labelSm,
     fontWeight: '700',
-    color: '#fff',
+    color: '#000',
   },
   metricsLabel: {
     fontSize: 10,
     fontWeight: '400',
-    color: '#fff',
+    color: '#000',
     opacity: 0.7,
   },
   metricsDot: {
@@ -776,8 +786,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  retakeBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  statusText: { ...Typography.bodyMd, color: '#fff', opacity: 0.8 },
+  retakeBtnText: { color: '#000', fontSize: 18, fontWeight: 'bold' },
+  statusText: { ...Typography.bodyMd, color: '#000', opacity: 0.8 },
   visionCamera: {
     width: '100%',
     height: '100%',

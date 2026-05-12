@@ -39,20 +39,21 @@ const base64ToPcm = (b64: string): number[] => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   const lookup = new Uint8Array(256);
   for (let i = 0; i < chars.length; i++) lookup[chars.charCodeAt(i)] = i;
-
-  const bytes = new Uint8Array((b64.length * 3) / 4);
+  let bufferLength = b64.length * 0.75;
+  if (b64[b64.length - 1] === '=') bufferLength--;
+  if (b64[b64.length - 2] === '=') bufferLength--;
+  const bytes = new Uint8Array(bufferLength);
   let p = 0;
   for (let i = 0; i < b64.length; i += 4) {
-    const b1 = lookup[b64.charCodeAt(i)], b2 = lookup[b64.charCodeAt(i + 1)];
-    const b3 = lookup[b64.charCodeAt(i + 2)], b4 = lookup[b64.charCodeAt(i + 3)];
-    bytes[p++] = (b1 << 2) | (b2 >> 4);
-    bytes[p++] = ((b2 & 15) << 4) | (b3 >> 2);
-    bytes[p++] = ((b3 & 3) << 6) | b4;
+    const enc1 = lookup[b64.charCodeAt(i)];
+    const enc2 = lookup[b64.charCodeAt(i + 1)];
+    const enc3 = lookup[b64.charCodeAt(i + 2)];
+    const enc4 = lookup[b64.charCodeAt(i + 3)];
+    bytes[p++] = (enc1 << 2) | (enc2 >> 4);
+    if (enc3 !== undefined && b64[i + 2] !== '=') bytes[p++] = ((enc2 & 15) << 4) | (enc3 >> 2);
+    if (enc4 !== undefined && b64[i + 3] !== '=') bytes[p++] = ((enc3 & 3) << 6) | enc4;
   }
-  
-  // Convert 8-bit bytes to 16-bit PCM samples
-  const pcm = new Int16Array(bytes.buffer);
-  return Array.from(pcm);
+  return Array.from(bytes);
 };
 
 // ─── Options ──────────────────────────────────────────────────────────────────
@@ -469,7 +470,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
         {featured ? (
           <View style={styles.playerCard}>
             <View style={styles.playerHeader}>
-              <Text style={styles.playerLabel}>🎧 {t('radio.now_playing')}</Text>
+              <Text style={styles.playerLabel}>🧑‍🏫 {t('radio.now_playing')}</Text>
               <View style={[styles.statusBadge, { backgroundColor: Colors.primaryContainer }]}>
                 <Text style={styles.statusText}>{featured.language}</Text>
               </View>
@@ -562,7 +563,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
         ) : (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>
-              {podcasts.length > 0 ? `📻 ${t('radio.select_to_play')}` : `📻 ${t('radio.no_script')}`}
+              {podcasts.length > 0 ? `📖 ${t('radio.select_to_play')}` : `📖 ${t('radio.no_script')}`}
             </Text>
             <Text style={styles.emptySubText}>
               {podcasts.length > 0 ? t('radio.tap_recent') : t('radio.create_new')}
@@ -692,7 +693,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
             {podcasts.map(p => (
               <View key={p.id} style={styles.podcastCard}>
                 <View style={styles.podcastLeft}>
-                  <Text style={styles.podcastIcon}>🎙</Text>
+                  <Text style={styles.podcastIcon}>📄</Text>
                   <View style={styles.podcastInfo}>
                     <Text style={styles.podcastTitle} numberOfLines={1}>{p.title}</Text>
                     <Text style={styles.podcastMeta}>{p.language}  ·  {p.createdAt}</Text>

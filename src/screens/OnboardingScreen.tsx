@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, 
-  ScrollView, ActivityIndicator, Platform, Alert, Dimensions
+  ScrollView, ActivityIndicator, Platform, Alert, Dimensions, BackHandler
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
@@ -212,8 +212,11 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
         <Text style={styles.alertText}>⚠️ {t('onboarding.restart_msg')}</Text>
       </View>
 
-      <TouchableOpacity style={styles.primaryBtn} onPress={onComplete}>
-        <Text style={styles.primaryBtnText}>{t('onboarding.finish_btn')}</Text>
+      <TouchableOpacity style={styles.primaryBtn} onPress={() => {
+        onComplete();
+        setTimeout(() => BackHandler.exitApp(), 100);
+      }}>
+        <Text style={styles.primaryBtnText}>{t('onboarding.restart_btn', 'Restart App')}</Text>
       </TouchableOpacity>
     </Animated.View>
   );
