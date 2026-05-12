@@ -45,3 +45,7 @@ cd android
 ```
 
 The application package identifier is `com.gemma4mobile`, and the user-facing display branding is **GoFarmer**.
+
+## 📄 License
+
+This project is open-source and licensed under the **MIT License**. See the [LICENSE](LICENSE) file for more details.
