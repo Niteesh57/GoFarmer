@@ -44,6 +44,8 @@ const resources = {
         yes: 'Yes',
         no: 'No',
         delete: 'Delete',
+        general: 'General',
+        weather: 'Weather',
       },
       tabs: {
         weather: 'Weather',
@@ -322,6 +324,8 @@ const resources = {
         yes: 'हाँ',
         no: 'नहीं',
         delete: 'हटाएं',
+        general: 'सामान्य',
+        weather: 'मौसम',
       },
       tabs: {
         weather: 'मौसम',
@@ -600,6 +604,8 @@ const resources = {
         delete: 'Eliminar',
         yes: 'Sí',
         no: 'No',
+        general: 'General',
+        weather: 'Clima',
       },
       tabs: {
         weather: 'Clima',
@@ -878,6 +884,8 @@ const resources = {
         delete: 'Supprimer',
         yes: 'Oui',
         no: 'Non',
+        general: 'Général',
+        weather: 'Météo',
       },
       tabs: {
         weather: 'Météo',
@@ -1156,6 +1164,8 @@ const resources = {
         delete: '删除',
         yes: '是',
         no: '否',
+        general: '通用',
+        weather: '天气',
       },
       tabs: {
         weather: '天气',
@@ -1434,6 +1444,8 @@ const resources = {
         delete: '削除',
         yes: 'はい',
         no: 'いいえ',
+        general: '一般',
+        weather: '天気',
       },
       tabs: {
         weather: '天気',
@@ -1712,6 +1724,8 @@ const resources = {
         delete: 'తొలగించు',
         yes: 'అవును',
         no: 'కాదు',
+        general: 'సాధారణ',
+        weather: 'వాతావరణం',
       },
       tabs: {
         weather: 'వాతావరణం',
@@ -1990,6 +2004,8 @@ const resources = {
         delete: 'ಅಳಿಸಿ',
         yes: 'ಹೌದು',
         no: 'ಇಲ್ಲ',
+        general: 'ಸಾಮಾನ್ಯ',
+        weather: 'ಹವಾಮಾನ',
       },
       tabs: {
         weather: 'ಹವಾಮಾನ',
@@ -2268,6 +2284,8 @@ const resources = {
         delete: 'Radera',
         yes: 'Ja',
         no: 'Nej',
+        general: 'Allmänt',
+        weather: 'Väder',
       },
       tabs: {
         weather: 'Väder',
@@ -2546,6 +2564,8 @@ const resources = {
         delete: 'Löschen',
         yes: 'Ja',
         no: 'Nein',
+        general: 'Allgemein',
+        weather: 'Wetter',
       },
       tabs: {
         weather: 'Wetter',

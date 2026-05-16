@@ -20,17 +20,19 @@ import { OrbAnimation } from '../components/OrbAnimation';
 import { optimizeImageForLLM } from '../utils/imageHelper';
 
 interface DoubtsScreenProps {
-  llmComplete: (prompt: string, onToken?: (tok: string) => void, audioData?: number[], imagePath?: string) => Promise<string>;
+  llmComplete: (prompt: string, onToken?: (tok: string) => void, audioData?: number[], imagePath?: string, aiMode?: 'general' | 'weather') => Promise<string>;
   isLlmReady: boolean;
   lm?: CactusLM;
 }
 
 const AGRI_SYSTEM_PROMPT =
-  'You are an Agricultural Advisor. Generate an educational and helpful advisory script answering the farmer\'s query. ' +
+  'You are an Agricultural Advisor. Answer the farmer\'s query straight to the point immediately without unnecessary generic context. ' +
+  'If there is beneficial rationale (e.g., weather conditions like low rain or sunny skies), provide the full helpful explanation to justify your advice. ' +
   'Use only plain text (no markdown) and the native script of the language.';
 
 const VISION_SYSTEM_PROMPT =
-  'You are an Agricultural Advisor. Generate an educational and helpful advisory script based on the image and query. ' +
+  'You are an Agricultural Advisor. Answer the farmer\'s query based on the image straight to the point immediately without unnecessary generic context. ' +
+  'If there is beneficial rationale, provide the full helpful explanation to justify your advice. ' +
   'Use only plain text (no markdown) and the native script of the language.';
 
 
@@ -75,6 +77,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady, lm }: DoubtsScre
   const [currentMetrics, setCurrentMetrics] = useState<MessageMetadata | null>(null);
   const [isVisionMode, setIsVisionMode] = useState(false);
   const [visionImagePath, setVisionImagePath] = useState<string | null>(null);
+  const [aiMode, setAiMode] = useState<'general' | 'weather'>('general');
 
   const cameraRef = useRef<any>(null);
   const ttsBufferRef = useRef<string>('');
@@ -286,7 +289,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady, lm }: DoubtsScre
         const updatedMessagesWithUser = [...history, userMsg];
         const fullPrompt = `${systemPrompt}\n\n${updatedMessagesWithUser.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}\nAssistant:`;
 
-        aiResponse = await llmComplete(fullPrompt, handleToken, audioData, undefined);
+        aiResponse = await llmComplete(fullPrompt, handleToken, audioData, undefined, aiMode);
       }
 
       const endTime = Date.now();
@@ -441,6 +444,25 @@ export default function DoubtsScreen({ llmComplete, isLlmReady, lm }: DoubtsScre
         rightIcon="🗣️"
         onRightPress={() => setIsVoiceSelectorOpen(true)}
       />
+
+      {viewMode === 'voice' && !isVisionMode && (
+        <View style={{ flexDirection: 'row', justifyContent: 'center', padding: Spacing.sm, backgroundColor: '#fdfdfd' }}>
+          <View style={styles.toggleContainer}>
+            <TouchableOpacity 
+              style={[styles.toggleBtn, aiMode === 'general' && styles.toggleBtnActive]} 
+              onPress={() => setAiMode('general')}
+            >
+              <Text style={[styles.toggleText, aiMode === 'general' && styles.toggleTextActive]}>🌱 {t('common.general', {defaultValue: 'General'})}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.toggleBtn, aiMode === 'weather' && styles.toggleBtnActive]} 
+              onPress={() => setAiMode('weather')}
+            >
+              <Text style={[styles.toggleText, aiMode === 'weather' && styles.toggleTextActive]}>☁️ {t('common.weather', {defaultValue: 'Weather'})}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <View style={styles.flex}>
         {viewMode === 'voice' ? (
@@ -799,4 +821,18 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
+  toggleContainer: {
+    flexDirection: 'row', backgroundColor: '#f2f2f7',
+    borderRadius: Radius.full, padding: 4, elevation: 2, shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1}, shadowOpacity: 0.1, shadowRadius: 2,
+  },
+  toggleBtn: {
+    paddingVertical: 10, paddingHorizontal: 20, borderRadius: Radius.full,
+  },
+  toggleBtnActive: {
+    backgroundColor: '#fff',
+    elevation: 1, shadowColor: '#000', shadowOffset: {width: 0, height: 1}, shadowOpacity: 0.1, shadowRadius: 1,
+  },
+  toggleText: { ...Typography.labelLg, color: '#8e8e93', fontWeight: '600' },
+  toggleTextActive: { color: '#007AFF', fontWeight: '700' },
 });

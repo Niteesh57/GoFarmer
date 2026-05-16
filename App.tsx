@@ -67,15 +67,9 @@ const SYSTEM_PROMPT_WEATHER =
   'STRICT RULES: Keep answers to exactly 3-4 clear sentences. DO NOT use any Markdown formatting (*, #, _, etc.). ' +
   'Use ONLY the NATIVE SCRIPT of the target language. No transliteration.';
 
-const SYSTEM_PROMPT_DOUBTS =
-  'You are an expert agricultural advisor and farm consultant. Answer farmer questions clearly and provide actionable advice.\n' +
-  'CRITICAL INSTRUCTION: You have access to a tool named "get_weather_forecast" which retrieves the 7-day weather forecast (temperature, rainfall, wind speed, soil evaporation) for the user\'s farm.\n' +
-  'Whenever a farmer asks any question related to spraying pesticides, pest control, planting crops (like tomatoes), irrigation, or weather suitability for farming activities, ' +
-  'you MUST IMMEDIATELY call the "get_weather_forecast" tool to check the forecast first. Do NOT ask the user for specific dates or clarify which day they want. ALWAYS call the tool automatically to analyze the upcoming week\'s weather data.\n' +
-  'Examples:\n' +
-  '- User: "When can I plant tomatoes this week?" -> Action: Call get_weather_forecast tool.\n' +
-  '- User: "Which day is perfect for spraying pesticide?" -> Action: Call get_weather_forecast tool.\n' +
-  '- User: "Please check the forecast of next week and let me know which day will be the good day to add pest control." -> Action: Call get_weather_forecast tool.';
+const SYSTEM_PROMPT_DOUBTS_WEATHER = `You are a professional agricultural expert specializing in crop management and soil sustainability. Analyze the provided [Current Weather Context] and {WEATHER_DATA} meticulously. Your objective is to deliver precise, actionable advice tailored to these specific conditions. It is absolutely mandatory that your final response consists of exactly between fifty and seventy words. Ensure every single word adds significant value to the farmer's decision-making process.`;
+
+const SYSTEM_PROMPT_DOUBTS_GENERAL = `As a senior agricultural advisor, your task is to provide comprehensive and practical guidance to farmers regarding their daily operations. Drawing from your vast knowledge of sustainable farming and pest control, outline the exact steps a farmer must take to succeed. Your response must be strictly limited to a length between fifty and seventy words. Focus on being direct, helpful, and technically accurate in your professional recommendation.`;
 
 const SYSTEM_PROMPT_RADIO =
   'You are a professional Agricultural Advisor. Create practical, step-by-step farming guides. ' +
@@ -176,7 +170,8 @@ function AppContent() {
       try {
         // 1. Get Real Hardware Specs
         const totalRam = await DeviceInfo.getTotalMemory();
-        const ramGB = totalRam / (1024 * 1024 * 1024);
+        const usedRam = await DeviceInfo.getUsedMemory();
+        const freeRamGB = (totalRam - usedRam) / (1024 * 1024 * 1024);
 
         let cores = 8;
         if (Platform.OS === 'android') {
@@ -186,28 +181,27 @@ function AppContent() {
             cores = specs.cpuCores;
           }
         } else {
-          // but we can assume most modern iPhones have at least 6-8 cores.
-          cores = 6;
+          cores = 4;
         }
 
         const specs = {
-          ram: ramGB.toFixed(1),
+          ram: freeRamGB.toFixed(1),
           cores: cores,
           processor: Platform.OS === 'android' ? 'Android ARM64' : 'Apple Silicon'
         };
         setDeviceSpecs(specs);
 
         // 2. Hardware Compatibility Check
-        if (ramGB < 3) {
-          console.warn('[AI] Device incompatible: Insufficient RAM', ramGB.toFixed(1));
-          setIncompatibleReason(`Your device has ${ramGB.toFixed(1)}GB RAM. GOFARMER requires at least 3GB to run the local AI model safely.`);
+        if (freeRamGB < 3) {
+          console.warn('[AI] Device incompatible: Insufficient free RAM', freeRamGB.toFixed(1));
+          setIncompatibleReason(`Your device has ${freeRamGB.toFixed(1)}GB free RAM available. GOFARMER requires at least 3GB of free RAM to run the local AI model safely.`);
           setFlow('incompatible');
           setInitializing(false);
           return;
         }
 
         // 3. Dynamic LM Configuration (No faking)
-        console.log(`[AI] Configuring for ${cores} cores and ${ramGB.toFixed(1)}GB RAM`);
+        console.log(`[AI] Configuring for ${cores} cores and ${freeRamGB.toFixed(1)}GB free RAM`);
 
         lm = new CactusLM({
           model: MODEL_NAME,
@@ -217,12 +211,12 @@ function AppContent() {
           use_gpu: true,
           gpu_device: 0,
           offload_kqv: true,
-          offload_all: ramGB > 6,
+          offload_all: freeRamGB > 6,
           flash_attn: true,
-          n_threads: ramGB > 10 ? 8 : Math.min(5, cores),
-          n_cores_physical: ramGB > 10 ? 8 : Math.min(5, cores),
-          cpu_affinity: ramGB > 10 ? false : true,
-          n_context: ramGB >= 8 ? 2000 : (ramGB >= 5 ? 1024 : 512),
+          n_threads: freeRamGB > 10 ? 8 : Math.min(5, cores),
+          n_cores_physical: freeRamGB > 10 ? 8 : Math.min(5, cores),
+          cpu_affinity: freeRamGB > 10 ? false : true,
+          n_context: freeRamGB >= 8 ? 2000 : (freeRamGB >= 5 ? 1024 : 512),
           kv_cache_quantize: true,
           kv_cache_type: 'int4',
           use_mmap: true,
@@ -391,74 +385,37 @@ function AppContent() {
    * @param {string} [imagePath] Optional local filesystem path to an attached image.
    * @return {Promise<string>} The structured guidance generated by the engine.
    */
-  const llmCompleteDoubts = useCallback(async (prompt: string, onToken?: (tok: string) => void, audioData?: number[], imagePath?: string): Promise<string> => {
+  const llmCompleteDoubts = useCallback(async (prompt: string, onToken?: (tok: string) => void, audioData?: number[], imagePath?: string, aiMode: 'general' | 'weather' = 'general'): Promise<string> => {
     if (!modelReady) throw new Error('Model not ready');
     if (!(await checkFreeRamBeforeInference())) return '';
     setIsGenerating(true);
     try {
-      const isWeatherOrPestQuery = /(pest|spray|plant|forecast|weather|rain|water|irriga|tomat|seed|crop)/i.test(prompt);
-      let optimizedPrompt = prompt;
-      if (isWeatherOrPestQuery) {
-        if (optimizedPrompt.endsWith('\nAssistant:')) {
-          optimizedPrompt = optimizedPrompt.replace(/\nAssistant:$/, '\n[CRITICAL INSTRUCTION: You MUST call get_weather_forecast tool immediately to verify the 7-day weather before advising. Do NOT ask the user for specific dates.]\nAssistant:');
-        } else {
-          optimizedPrompt += '\n[CRITICAL INSTRUCTION: You MUST call get_weather_forecast tool immediately to verify the 7-day weather before advising. Do NOT ask the user for specific dates.]';
-        }
+      let systemPrompt = '';
+      if (aiMode === 'general') {
+        systemPrompt = SYSTEM_PROMPT_DOUBTS_GENERAL;
+      } else {
+        // Proactively fetch weather and inject it into the prompt instead of relying on tool calling
+        const weatherData = await getFormattedWeatherSummary();
+        systemPrompt = SYSTEM_PROMPT_DOUBTS_WEATHER.replace('{WEATHER_DATA}', weatherData);
       }
 
-      const messages: any[] = [
-        { role: 'system', content: SYSTEM_PROMPT_DOUBTS },
-        {
-          role: 'user',
-          content: optimizedPrompt,
-        },
+      const messages: CactusLMMessage[] = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: prompt },
       ];
 
       if (imagePath) {
-        messages[1].images = [imagePath];
+        (messages[1] as any).images = [imagePath];
       }
 
-      const tools: CactusLMTool[] = [
-        {
-          name: 'get_weather_forecast',
-          description: 'Get the 7-day weather forecast (temperature, rainfall, wind, soil evaporation) for the user\'s farm. Call this when the user asks about planting, spraying pesticides, or general weather conditions.',
-          parameters: {
-            type: 'object',
-            properties: {},
-            required: []
-          },
-        },
-      ];
-
-      const inferenceOptions: any = { temperature: 0.1, maxTokens: 128, topP: 0.9, topK: 40 };
-      if (isWeatherOrPestQuery) {
-        inferenceOptions.forceTools = true;
-      }
-
-      let result = await lm.complete({
+      const result = await lm.complete({
         messages,
         audio: audioData,
-        tools,
-        options: inferenceOptions,
+        options: { temperature: 0.1, maxTokens: 512, topP: 0.9, topK: 40 },
         onToken,
       });
 
-      if (result.functionCalls && result.functionCalls.length > 0) {
-        const call = result.functionCalls.find((fc: any) => fc.name === 'get_weather_forecast');
-        if (call) {
-          const weatherData = await getFormattedWeatherSummary();
-          messages.push({ role: 'assistant', content: `[Called tool: get_weather_forecast]` });
-          messages.push({ role: 'user', content: `Tool result (7-day forecast):\n${weatherData}\n\nBased on this weather data, directly answer my previous question. Keep it concise.` });
-          
-          result = await lm.complete({
-            messages,
-            options: { temperature: 0.1, maxTokens: 512, topP: 0.9, topK: 40 },
-            onToken,
-          });
-        }
-      }
-
-      return result.response;
+      return (result.response || '').trim();
     } finally {
       setIsGenerating(false);
     }
@@ -469,7 +426,8 @@ function AppContent() {
   const [radioGen, setRadioGen] = useState({
     generating: false,
     step: '',
-    pct: 0
+    pct: 0,
+    tokens: 0
   });
 
   /**
@@ -489,7 +447,7 @@ function AppContent() {
     if (!modelReady || radioGen.generating) return;
     if (!(await checkFreeRamBeforeInference())) return;
 
-    setRadioGen({ generating: true, step: 'radio.creating_script', pct: 20 });
+    setRadioGen({ generating: true, step: 'radio.creating_script', pct: 20, tokens: 0 });
 
     // Simulate steps for UI feedback
     const steps = [
@@ -507,15 +465,22 @@ function AppContent() {
       const targetLangStr = lang.label.replace(/[^\w\s]/g, '').trim();
 
       let rawResponseText = '';
+      let tokenCount = 0;
+      const handleRadioToken = (tok: string) => {
+        tokenCount++;
+        if (tokenCount % 2 === 0 || tokenCount < 10) {
+          setRadioGen(prev => ({ ...prev, tokens: tokenCount }));
+        }
+      };
 
       if (audioData) {
         const baseSystemPrompt = `You are an Expert Agricultural Advisor. Generate an educational, highly practical, and helpful advisory podcast script in a ${style.toLowerCase()} style answering the farmer's audio query.`;
         const fullSystemPrompt = `${baseSystemPrompt}\n\nSTRICT RULE: You MUST answer ENTIRELY in the following language: ${targetLangStr}, generating ONLY native ${targetLangStr} words written strictly in the native script of ${targetLangStr} (e.g., Telugu script for Telugu). NO English alphabet transliteration. DO NOT use markdown symbols.`;
-        
+
         rawResponseText = await streamAudioVoiceResponse(
           fullSystemPrompt,
           audioData,
-          () => {},
+          handleRadioToken,
           lm
         );
       } else {
@@ -538,6 +503,7 @@ function AppContent() {
             { role: 'user', content: prompt } as any,
           ],
           options: { temperature: 0.7, maxTokens: 600, topP: 0.9, topK: 40 },
+          onToken: handleRadioToken,
         });
         rawResponseText = response.response;
       }
@@ -551,11 +517,29 @@ function AppContent() {
         return acc;
       }, []).filter(s => s.trim().length > 0);
 
-      const midPoint = Math.floor(cleanScript.length / 2);
-      const snippet = cleanScript.substring(midPoint, midPoint + 15).replace(/[.!?]/g, '').trim();
+      // Extract most repetitive, unique content words to create a meaningful title
+      const stopWords = new Set(['the', 'and', 'for', 'with', 'you', 'this', 'that', 'from', 'your', 'have', 'what', 'some', 'very', 'also', 'will', 'can', 'are', 'not', 'but', 'how', 'when', 'who', 'out', 'into', 'about', 'they', 'them', 'their', 'has', 'was', 'were', 'been', 'much', 'more', 'upon', 'only', 'should', 'could', 'would']);
+      const allWords = cleanScript.split(/[\s.,!?()\[\]{}:;"'—`*#]+/).filter(w => w.length >= 4 && !stopWords.has(w.toLowerCase()));
+
+      const counts: { [key: string]: number } = {};
+      allWords.forEach(w => { counts[w] = (counts[w] || 0) + 1; });
+
+      const sortedDistinctWords = Object.keys(counts).sort((a, b) => {
+        if (counts[b] !== counts[a]) return counts[b] - counts[a];
+        return b.length - a.length;
+      });
+
+      const topWords = sortedDistinctWords.slice(0, 4);
+      let snippet = topWords.join(' ');
+      if (!snippet || snippet.length < 4) {
+        snippet = `${topic} — ${style}`;
+      } else {
+        snippet = snippet.replace(/\b\w/g, c => c.toUpperCase());
+      }
+
       const newPodcast = {
         id: Date.now().toString(),
-        title: snippet || `${topic} — ${style}`,
+        title: snippet,
         topic,
         language: lang.label,
         langCode: lang.code,
@@ -575,10 +559,10 @@ function AppContent() {
         console.error('Failed to persist background podcast', e);
       }
 
-      setRadioGen({ generating: false, step: 'radio.done', pct: 100 });
+      setRadioGen({ generating: false, step: 'radio.done', pct: 100, tokens: tokenCount });
       if (onDone) onDone(newPodcast);
     } catch (e) {
-      setRadioGen({ generating: false, step: '', pct: 0 });
+      setRadioGen({ generating: false, step: '', pct: 0, tokens: 0 });
       throw e;
     }
   }, [modelReady, radioGen.generating]);

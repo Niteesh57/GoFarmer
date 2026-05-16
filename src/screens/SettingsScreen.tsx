@@ -799,7 +799,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
         {/* About */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionHeader}>ℹ {t('settings.about_support')}</Text>
-          <Text style={styles.aboutText}>{t('settings.version')} 1.0.0  ·  Build: 20260503</Text>
+          <Text style={styles.aboutText}>{t('settings.version')} 2.1.0  ·  Build: 20260513</Text>
           <Text style={styles.aboutText}>{t('settings.developer')} {t('settings.developer_name')}</Text>
 
           {/* User Guide Hidden

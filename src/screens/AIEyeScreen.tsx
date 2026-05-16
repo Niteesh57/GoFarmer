@@ -87,7 +87,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
       .then(c => setCurrentLocation({ lat: c.latitude, lng: c.longitude }))
       .catch(console.log);
     fetchLoc();
-    const interval = setInterval(fetchLoc, 2000);
+    const interval = setInterval(fetchLoc, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -99,8 +99,12 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
       if (!anchorLocation) {
         const first = scans[scans.length - 1];
         if (first.rawLocation) {
-          setAnchorLocation(first.rawLocation);
-          AsyncStorage.setItem('@GOFARMER_ai_anchor', JSON.stringify(first.rawLocation));
+          const safeLoc = {
+            lat: Number((first.rawLocation as any).lat ?? (first.rawLocation as any).latitude ?? 0),
+            lng: Number((first.rawLocation as any).lng ?? (first.rawLocation as any).longitude ?? 0),
+          };
+          setAnchorLocation(safeLoc);
+          AsyncStorage.setItem('@GOFARMER_ai_anchor', JSON.stringify(safeLoc));
         }
       }
     }
@@ -130,37 +134,55 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
     setToast({ visible: true, message, type });
   };
 
-  /**
-   * Groups disparate geospatial scan markers into consolidated visual clusters.
-   *
-   * Utilizes Euclidean distance comparisons against an anchor cluster radius
-   * to group nearby crop diagnostic logs within roughly ~5 meters.
-   *
-   * @param {ScanResult[]} allScans Complete array of persistent scan items.
-   * @return {ScanResult[][]} Array of clustered item arrays for map rendering.
-   */
-  const getClusters = (allScans: ScanResult[]) => {
-    const threshold = 0.00005; // ~5 meters
-    const groups: ScanResult[][] = [];
+  // ─── Disease Color Palette (30 distinct colors) ─────────────────────────────
+  // Each unique disease name gets a persistent color from this palette.
+  const DISEASE_PALETTE = [
+    '#FF1744', // red
+    '#FF6D00', // deep orange
+    '#FFD600', // yellow
+    '#00E676', // green
+    '#00B0FF', // light blue
+    '#D500F9', // purple
+    '#FF4081', // pink
+    '#76FF03', // lime
+    '#1DE9B6', // teal
+    '#FFAB40', // orange
+    '#40C4FF', // cyan
+    '#EA80FC', // light purple
+    '#FF6E40', // deep orange alt
+    '#B2FF59', // light green
+    '#80D8FF', // light cyan
+    '#FF80AB', // light pink
+    '#CCFF90', // pale green
+    '#A7FFEB', // pale teal
+    '#FFD180', // pale orange
+    '#CF6679', // rose
+    '#7C4DFF', // deep purple
+    '#00BFA5', // dark teal
+    '#F4511E', // tomato
+    '#E040FB', // magenta
+    '#26C6DA', // aqua
+    '#FFA726', // amber
+    '#5C6BC0', // indigo
+    '#66BB6A', // medium green
+    '#EF5350', // coral red
+    '#AB47BC', // violet
+  ];
 
-    allScans.forEach(scan => {
-      if (!scan.rawLocation) return;
-      let found = false;
-      for (const group of groups) {
-        const center = group[0].rawLocation!;
-        const d = Math.sqrt(
-          Math.pow(scan.rawLocation.lat - center.lat, 2) + 
-          Math.pow(scan.rawLocation.lng - center.lng, 2)
-        );
-        if (d < threshold) {
-          group.push(scan);
-          found = true;
-          break;
-        }
-      }
-      if (!found) groups.push([scan]);
+  /**
+   * Returns a deterministic color for a given disease name from the palette.
+   * Healthy scans get a distinct green. Unknown/undefined gets grey.
+   */
+  const getDiseaseColor = (scan: ScanResult, allScans: ScanResult[]): string => {
+    if (scan.status === 'healthy') return '#69F0AE';
+    if (!scan.disease) return '#BDBDBD';
+    // Collect all unique disease names in order of first appearance
+    const seen: string[] = [];
+    allScans.forEach(s => {
+      if (s.disease && !seen.includes(s.disease)) seen.push(s.disease);
     });
-    return groups;
+    const idx = seen.indexOf(scan.disease);
+    return DISEASE_PALETTE[idx % DISEASE_PALETTE.length];
   };
 
   /**
@@ -213,9 +235,9 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
         const prompt =
           'You are an expert plant pathologist. Analyze the image and provide a diagnosis. ' +
           'Specifically include the "Chemical Treatment" as "composition" and the "Management" steps as "management". ' +
-          `Provide values in ${contentLangStr}. ` +
+          `CRITICAL REQUIREMENT: All output fields (disease, composition, management, recommendations) MUST BE generated entirely in the target language: ${contentLangStr}, written strictly using the native script of ${contentLangStr}. ` +
           'Respond ONLY in this JSON format:\n' +
-          '{"status":"healthy|diseased|warning","disease":"<disease name or none>","confidence":<0-100>,"severity":<0-100>,"composition":"<initial chemical treatment>","management":"<how to stop the spread>","recommendations":["<tip1>","<tip2>","<tip3>"]}\n';
+          '{"status":"healthy|diseased|warning","disease":"<disease name in target language or none>","confidence":<0-100>,"severity":<0-100>,"composition":"<initial chemical treatment in target language>","management":"<management steps in target language>","recommendations":["<tip1>","<tip2>","<tip3>"]}\n';
 
         const { response } = await llmComplete(prompt, imagePath, {});
 
@@ -251,7 +273,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
           severity: parsed.severity,
           time: timestamp,
           location: `${lat}, ${lng}`,
-          rawLocation: coords,
+          rawLocation: { lat: coords.latitude, lng: coords.longitude },
           recommendations: parsed.recommendations,
           composition: parsed.composition,
           management: parsed.management,
@@ -297,97 +319,148 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
             resizeMode="cover"
           />
 
-          {/* User Avatar - Plotted relative to Anchor (Center) */}
+          {/* Anchor-Centric Radial Radar Rings */}
+          <View style={{position: 'absolute', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center'}}>
+            <Svg height="100%" width="100%" style={{position: 'absolute'}}>
+              <SvgCircle cx="50%" cy="50%" r="12%" stroke="rgba(0,122,255,0.15)" strokeWidth="1" fill="rgba(0,122,255,0.02)" />
+              <SvgCircle cx="50%" cy="50%" r="24%" stroke="rgba(0,122,255,0.1)" strokeWidth="1" fill="none" />
+              <SvgCircle cx="50%" cy="50%" r="36%" stroke="rgba(0,122,255,0.08)" strokeWidth="1" fill="none" />
+              {/* Compass Crosshair */}
+              <View style={{position: 'absolute', top: '50%', left: '10%', right: '10%', height: 1, backgroundColor: 'rgba(0,122,255,0.05)'}} />
+              <View style={{position: 'absolute', left: '50%', top: '10%', bottom: '10%', width: 1, backgroundColor: 'rgba(0,122,255,0.05)'}} />
+            </Svg>
+          </View>
+
+          {/* Anchor-Centric Precision Plotting: The first scan is always the center point (50, 50) */}
           {(() => {
-            let left = 50;
-            let top = 50;
-            if (anchorLocation && currentLocation) {
-              const dx = currentLocation.lng - anchorLocation.lng;
-              const dy = currentLocation.lat - anchorLocation.lat;
-              // Scale for static view: 10000 means 0.01 deg = 100% of screen width
-              left = 50 + (dx * 10000);
-              top = 50 - (dy * 10000);
-            }
-            
+            const safeLat = (loc: any): number => Number(loc?.lat ?? loc?.latitude ?? 0);
+            const safeLng = (loc: any): number => Number(loc?.lng ?? loc?.longitude ?? 0);
+
+            // Collect ALL locations to determine the relative scale
+            const allLocs: any[] = [];
+            if (currentLocation) allLocs.push(currentLocation);
+            scans.forEach(s => { if (s.rawLocation) allLocs.push(s.rawLocation); });
+
+            // Radar center is anchorLocation (the first scan)
+            const getPos = (loc: any) => {
+              if (!anchorLocation) return { top: 50, left: 50 };
+              
+              const aLat = safeLat(anchorLocation);
+              const aLng = safeLng(anchorLocation);
+              const cLat = safeLat(loc);
+              const cLng = safeLng(loc);
+
+              const dLat = cLat - aLat;
+              const dLng = cLng - aLng;
+
+              // Find maximum deviation from anchor among ALL points to set the scale
+              let maxDev = 0.0001; // Minimum zoom (~11m radius)
+              allLocs.forEach(l => {
+                const devLat = Math.abs(safeLat(l) - aLat);
+                const devLng = Math.abs(safeLng(l) - aLng);
+                if (devLat > maxDev) maxDev = devLat;
+                if (devLng > maxDev) maxDev = devLng;
+              });
+
+              // Map coordinates: dLat > 0 is North (top decreasing), dLng > 0 is East (left increasing)
+              // We use 38% radius as the maximum plot distance to keep markers within visual rings
+              return {
+                top: 50 - (dLat / maxDev) * 38,
+                left: 50 + (dLng / maxDev) * 38,
+              };
+            };
+
+            // Group scans that land on the EXACT same pixel position
+            const posKey = (loc: any) =>
+              `${safeLat(loc).toFixed(6)}_${safeLng(loc).toFixed(6)}`;
+
+            const posMap: Record<string, ScanResult[]> = {};
+            scans.forEach(s => {
+              if (!s.rawLocation) return;
+              const key = posKey(s.rawLocation);
+              if (!posMap[key]) posMap[key] = [];
+              posMap[key].push(s);
+            });
+
+            const PIN_SIZE = 44; 
+            const userPos = currentLocation ? getPos(currentLocation) : { top: 50, left: 50 };
+
             return (
-              <View style={[styles.marker, { top: `${top}%`, left: `${left}%`, transform: [{translateX: -15}, {translateY: -15}], zIndex: 50, alignItems: 'center' }]}>
-                <View style={styles.userAvatarContainerSmall}>
-                  <Text style={{fontSize: 20}}>👨‍🌾</Text>
-                  <View style={styles.pulseDotSmall} />
+              <>
+                {/* User Avatar */}
+                <View style={[styles.marker, { top: `${userPos.top}%`, left: `${userPos.left}%`, transform: [{translateX: -20}, {translateY: -20}], zIndex: 50, alignItems: 'center' } as any]}>
+                  <View style={styles.userAvatarContainerSmall}>
+                    <Text style={{fontSize: 20}}>👨‍🌾</Text>
+                    <View style={styles.pulseDotSmall} />
+                  </View>
                 </View>
-              </View>
+
+                {/* Individual Disease Pins — one per scan, fanned side-by-side at same coords */}
+                {Object.values(posMap).flatMap((bucket) =>
+                  bucket.map((scan, slotIdx) => {
+                    if (!scan.rawLocation) return null;
+                    const pos = getPos(scan.rawLocation);
+                    const color = getDiseaseColor(scan, scans);
+
+                    // Fan multiple scans at the same location horizontally
+                    // Center the row: offset by (slotIdx - (bucket.length-1)/2) * PIN_SIZE
+                    const fanOffset = (slotIdx - (bucket.length - 1) / 2) * PIN_SIZE;
+
+                    return (
+                      <TouchableOpacity
+                        key={scan.id}
+                        style={[styles.marker, {
+                          top: `${pos.top}%`,
+                          left: `${pos.left}%`,
+                          zIndex: 10,
+                          transform: [{ translateX: fanOffset }, { translateY: 0 }],
+                        } as any]}
+                        onPress={() => setResult(scan)}
+                        activeOpacity={0.8}
+                      >
+                        {/* Heatmap glow */}
+                        <View style={styles.heatmapLayerSmall}>
+                          <Svg height="100" width="100">
+                            <Defs>
+                              <RadialGradient id={`grad-${scan.id}`} cx="50%" cy="50%" rx="50%" ry="50%" fx="50%" fy="50%">
+                                <Stop offset="0%" stopColor={color} stopOpacity="0.85" />
+                                <Stop offset="50%" stopColor={color} stopOpacity="0.25" />
+                                <Stop offset="100%" stopColor={color} stopOpacity="0" />
+                              </RadialGradient>
+                            </Defs>
+                            <SvgCircle cx="50" cy="50" r="50" fill={`url(#grad-${scan.id})`} />
+                          </Svg>
+                        </View>
+
+                        {/* Pin */}
+                        <View style={styles.snapPinSmall}>
+                          <View style={[styles.snapImageContainerSmall, { borderColor: color, borderWidth: 2.5 }]}>
+                            {scan.imagePath ? (
+                              <Image source={{ uri: scan.imagePath }} style={styles.snapImage} />
+                            ) : (
+                              <Text style={{fontSize: 12}}>🌿</Text>
+                            )}
+                            {/* Disease color dot indicator */}
+                            <View style={{
+                              position: 'absolute', bottom: -3, right: -3,
+                              width: 10, height: 10, borderRadius: 5,
+                              backgroundColor: color,
+                              borderWidth: 1.5, borderColor: '#fff',
+                            }} />
+                          </View>
+                          <View style={styles.snapLabelSmall}>
+                            <Text style={[styles.snapLabelTextSmall, { color }]} numberOfLines={1}>
+                              {scan.disease || t('common.healthy')}
+                            </Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </>
             );
           })()}
-
-          {/* Plotted Diseases (Clustered Snap Map Style Pins) */}
-          {getClusters(scans).map((cluster, idx) => {
-            const scan = cluster[0];
-            if (!scan.rawLocation || !anchorLocation) return null;
-            
-            const dx = scan.rawLocation.lng - anchorLocation.lng;
-            const dy = scan.rawLocation.lat - anchorLocation.lat;
-            
-            const left = 50 + (dx * 10000); 
-            const top = 50 - (dy * 10000); 
-            
-            const color = cluster.some(s => s.status === 'diseased') ? '#ff1744' : '#ffeb3b';
-
-            return (
-              <TouchableOpacity 
-                key={scan.id + idx} 
-                style={[styles.marker, { top: `${top}%`, left: `${left}%`, zIndex: 10 } as any]}
-                onPress={() => {
-                  if (cluster.length > 1) setSelectedCluster(cluster);
-                  else setResult(cluster[0]);
-                }}
-                activeOpacity={0.8}
-              >
-                {/* Heatmap Layer */}
-                <View style={styles.heatmapLayerSmall}>
-                  <Svg height="120" width="120">
-                    <Defs>
-                      <RadialGradient id={`grad-${scan.id}`} cx="50%" cy="50%" rx="50%" ry="50%" fx="50%" fy="50%">
-                        <Stop offset="0%" stopColor={color} stopOpacity="0.8" />
-                        <Stop offset="40%" stopColor={color} stopOpacity="0.3" />
-                        <Stop offset="100%" stopColor={color} stopOpacity="0" />
-                      </RadialGradient>
-                    </Defs>
-                    <SvgCircle cx="60" cy="60" r="60" fill={`url(#grad-${scan.id})`} />
-                  </Svg>
-                </View>
-
-                {/* Snap Pin Layer (Small) */}
-                <View style={styles.snapPinSmall}>
-                  <View style={[styles.snapImageContainerSmall, { borderColor: color }]}>
-                    {/* Stacked Images Effect for Clusters */}
-                    {cluster.length > 1 && (
-                      <>
-                        <View style={[styles.snapImageStack, { left: 3, top: 3, zIndex: -1, transform: [{rotate: '-5deg'}] }]} />
-                        <View style={[styles.snapImageStack, { left: 6, top: 6, zIndex: -2, transform: [{rotate: '5deg'}] }]} />
-                      </>
-                    )}
-                    
-                    {scan.imagePath ? (
-                      <Image source={{ uri: scan.imagePath }} style={styles.snapImage} />
-                    ) : (
-                      <Text style={{fontSize: 12}}>🌿</Text>
-                    )}
-                    
-                    {cluster.length > 1 && (
-                      <View style={styles.clusterBadge}>
-                        <Text style={styles.clusterBadgeText}>{cluster.length}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.snapLabelSmall}>
-                    <Text style={styles.snapLabelTextSmall} numberOfLines={1}>
-                      {cluster.length > 1 ? t('aieye.collection', {count: cluster.length}) : (scan.disease || t('common.healthy'))}
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
 
           {/* Live Coordinates Overlay */}
           {currentLocation && (
@@ -780,7 +853,7 @@ const styles = StyleSheet.create({
   scanningTitle: { ...Typography.titleMd, color: Colors.onSurface },
   
   bottomControls: {
-    position: 'absolute', bottom: 30, left: 0, right: 0,
+    position: 'absolute', top: 90, left: 0, right: 0,
     alignItems: 'center', gap: Spacing.md, zIndex: 30,
   },
   toggleContainer: {
@@ -948,7 +1021,7 @@ const styles = StyleSheet.create({
   resultValue: { color: Colors.onSurface, fontWeight: '600' },
   divider: { height: 1, backgroundColor: Colors.outlineVariant, marginVertical: Spacing.sm },
   recTitle: { ...Typography.titleSm, color: Colors.onSurface, marginBottom: 4 },
-  recItem: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, lineHeight: 22, marginLeft: 4 },
+  recItem: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 6, marginLeft: 4 },
   resultActions: { flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.sm },
   resultBtnSecondary: {
     flex: 1, height: 48, borderRadius: Radius.full,
@@ -972,8 +1045,8 @@ const styles = StyleSheet.create({
   detailSection: { backgroundColor: '#ffffff', padding: Spacing.md, borderRadius: Radius.md, borderLeftWidth: 2, borderLeftColor: '#e5e5ea' },
   sectionTitle: { ...Typography.titleSm, color: Colors.onSurface, marginBottom: Spacing.xs, fontWeight: '700' },
   sectionText: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, lineHeight: 22 },
-  recDot: { color: Colors.primary, marginRight: Spacing.sm, fontSize: 18 },
-  recText: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, flex: 1 },
+  recDot: { color: Colors.primary, marginRight: Spacing.sm, fontSize: 16, lineHeight: 22 },
+  recText: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, flex: 1, lineHeight: 22 },
   
   liveCoords: {
     position: 'absolute', bottom: 10, left: 10,

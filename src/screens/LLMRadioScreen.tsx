@@ -31,7 +31,7 @@ interface PodcastItem {
 interface LLMRadioScreenProps {
   llmComplete: (prompt: string) => Promise<string>;
   isLlmReady: boolean;
-  radioGen: { generating: boolean; step: string; pct: number };
+  radioGen: { generating: boolean; step: string; pct: number; tokens?: number };
   startRadioGeneration: (topic: string, lang: { label: string, code: string }, style: string, onDone: (p: PodcastItem) => void, audioData?: number[]) => Promise<void>;
 }
 
@@ -663,7 +663,14 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
 
           {radioGen.generating && (
             <View style={styles.genProgress}>
-              <Text style={styles.genStep}>{t(radioGen.step)}</Text>
+              <View style={styles.progressHeaderRow}>
+                <Text style={styles.genStep}>{t(radioGen.step)}</Text>
+                {(radioGen.tokens ?? 0) > 0 && (
+                  <View style={styles.tokenBadgeContainer}>
+                    <Text style={styles.tokenBadgeText}>⚡ {radioGen.tokens} Tokens</Text>
+                  </View>
+                )}
+              </View>
               <View style={styles.genTrack}>
                 <View style={[styles.genFill, { width: `${radioGen.pct}%` }]} />
               </View>
@@ -850,7 +857,10 @@ const styles = StyleSheet.create({
 
   disabledForm: { opacity: 0.5 },
 
-  genProgress: { gap: Spacing.sm, alignItems: 'center' },
+  genProgress: { gap: Spacing.sm, alignItems: 'center', width: '100%' },
+  progressHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
+  tokenBadgeContainer: { backgroundColor: Colors.primaryContainer, paddingHorizontal: 10, paddingVertical: 2, borderRadius: Radius.full },
+  tokenBadgeText: { ...Typography.labelSmall, color: Colors.onPrimaryContainer, fontWeight: 'bold' },
   genStep: { ...Typography.bodyMedium, color: Colors.onSurfaceVariant },
   genTrack: { width: '100%', height: 8, backgroundColor: Colors.surfaceContainerHighest, borderRadius: Radius.full, overflow: 'hidden' },
   genFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: Radius.full },
