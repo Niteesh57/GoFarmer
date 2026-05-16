@@ -11,6 +11,20 @@ The application downloads the optimized **Gemma 4** model directly to the user's
 - **On-Device AI Inference**: Downloads and runs the `gemma-4-e2b-it` model locally with complete offline capability and built-in hardware RAM safeguards.
 - **Multimodal AI Eye**: Scans plant imagery to identify crop stress, leaf symptoms, and disease severity in real time.
 - **Voice-First AI Consultant**: Provides direct audio-based interaction where farmers can speak questions and receive agricultural guidance voiced back in their chosen regional language.
+
+## Model Documentation: Gemma 4 (`gemma-4-e2b-it`)
+
+### Download & Management
+The application utilizes the **Cactus execution framework** to securely download and manage model binaries locally.
+- **Trigger**: Initial download occurs during the onboarding flow in [OnboardingScreen.tsx](https://github.com/Niteesh57/GoFarmer/blob/main/src/screens/OnboardingScreen.tsx).
+- **Orchestration**: Managed by [ModelService.ts](https://github.com/Niteesh57/GoFarmer/blob/main/src/services/ModelService.ts), which handles `int4` quantized retrieval, integrity checks, and Knowledge Base (RAG) updates.
+- **Storage Path**: Persisted on-device at `/data/local/tmp/gemma-4-e2b-it`.
+
+### Implementation References
+- **Initialization**: [App.tsx](https://github.com/Niteesh57/GoFarmer/blob/main/App.tsx) initializes the global `CactusLM` instance with dynamic hardware optimization (RAM/Cores).
+- **Diagnostics**: [AIEyeScreen.tsx](https://github.com/Niteesh57/GoFarmer/blob/main/src/screens/AIEyeScreen.tsx) drives the multimodal vision pipeline for plant pathology.
+- **Q&A Interface**: [DoubtsScreen.tsx](https://github.com/Niteesh57/GoFarmer/blob/main/src/screens/DoubtsScreen.tsx) handles text and audio-based agricultural guidance.
+- **Maintenance**: [SettingsScreen.tsx](https://github.com/Niteesh57/GoFarmer/blob/main/src/screens/SettingsScreen.tsx) provides UI for model health monitoring and repair.
 - **Global Localization**: Fully localized across 10 distinct language interfaces (`en`, `hi`, `es`, `fr`, `zh`, `ja`, `te`, `kn`, `sv`, `de`) with automated offline model readiness setups.
 - **Privacy & Telemetry**: Generates tailored management plans locally with all server logging/telemetry strictly disabled during consultation sessions.
 
