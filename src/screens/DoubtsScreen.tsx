@@ -133,7 +133,12 @@ export default function DoubtsScreen({ llmComplete, isLlmReady, lm }: DoubtsScre
     const options = { sampleRate: 16000, channels: 1, bitsPerSample: 16, audioSource: 1 };
   };
 
-  // -- Voice Transcription --
+  // --- Voice Transcription & Audio Capture ---
+  /**
+   * Toggles the audio recording state.
+   * On start: Requests OS microphone permissions, clears chunks, and initiates recording.
+   * On stop: Halts recording, processes Base64 to PCM, and triggers the LLM pipeline.
+   */
   const toggleRecording = async () => {
     if (isRecording) {
       setIsRecording(false);
@@ -192,7 +197,13 @@ export default function DoubtsScreen({ llmComplete, isLlmReady, lm }: DoubtsScre
     }
   };
 
-  // -- AI Logic --
+  // --- AI Pipeline & Context Generation ---
+  /**
+   * Handles the complete inference pipeline for multimodal and voice inputs.
+   * Processes input strings or PCM audio through the local LLM.
+   * Tracks TTFT (Time To First Token) and Token Generation Speed for performance metrics.
+   * Synchronizes the generated output chunks to the Native TTS engine.
+   */
   const handleNewMessage = async (text?: string, audioData?: number[]) => {
     if (!text && !audioData) return;
     if (!isLlmReady) {

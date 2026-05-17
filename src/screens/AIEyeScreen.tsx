@@ -61,7 +61,9 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
   const [anchorLocation, setAnchorLocation] = useState<{lat: number, lng: number} | null>(null);
   const [selectedCluster, setSelectedCluster] = useState<ScanResult[] | null>(null);
 
-  React.useEffect(() => {
+  // --- Location Tracking & Map Anchoring ---
+  // Calculates real-time distance from the initial anchor point.
+  // Updates the anchor if the user physically moves beyond the renderable radius (~500m).
     if (anchorLocation && currentLocation) {
       const dist = Math.sqrt(
         Math.pow(currentLocation.lat - anchorLocation.lat, 2) + 
@@ -333,15 +335,19 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
           {/* Anchor-Centric Precision Plotting: The first scan is always the center point (50, 50) */}
           {(() => {
+            // --- Coordinate Normalization ---
             const safeLat = (loc: any): number => Number(loc?.lat ?? loc?.latitude ?? 0);
             const safeLng = (loc: any): number => Number(loc?.lng ?? loc?.longitude ?? 0);
 
-            // Collect ALL locations to determine the relative scale
+            // Collect ALL locations to determine the relative scale boundaries
             const allLocs: any[] = [];
             if (currentLocation) allLocs.push(currentLocation);
             scans.forEach(s => { if (s.rawLocation) allLocs.push(s.rawLocation); });
 
-            // Radar center is anchorLocation (the first scan)
+            /**
+             * Calculates the absolute percentage coordinate (0-100) for a given GPS location
+             * relative to the primary anchor scan, ensuring all points stay within the radar rings.
+             */
             const getPos = (loc: any) => {
               if (!anchorLocation) return { top: 50, left: 50 };
               

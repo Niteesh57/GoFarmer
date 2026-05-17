@@ -105,11 +105,11 @@ export default function App(): React.JSX.Element {
 function AppContent() {
   const { isDark, colors } = useTheme();
 
-  // "?"? Onboarding state "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+  // --- App Flow & Navigation State ---
   const [flow, setFlow] = useState<AppFlow>('splash');
   const [activeTab, setActiveTab] = useState<TabName>('weather');
 
-  // "?"? Model state "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+  // --- LLM Engine & Hardware State ---
   const [modelReady, setModelReady] = useState(false);
   const [initializing, setInitializing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -118,7 +118,8 @@ function AppContent() {
   const [deviceSpecs, setDeviceSpecs] = useState({ ram: '0', cores: 0, processor: '' });
   const [incompatibleReason, setIncompatibleReason] = useState('');
 
-  // Restore language & Load weather data
+  // --- Application Initialization ---
+  // Restore language preference and load initial weather data on mount
   useEffect(() => {
     AsyncStorage.getItem(LANGUAGE_KEY).then(langCode => {
       if (langCode) i18n.changeLanguage(langCode);
@@ -164,6 +165,12 @@ function AppContent() {
   }, []);
 
   // ── Initialize model ───────────────────────────────────────────────────────
+  /**
+   * Core initialization for the local CactusLM engine.
+   * 1. Profiles device hardware (RAM, Cores)
+   * 2. Calculates safe memory allocations
+   * 3. Instantiates the LLM engine with dynamic configuration
+   */
   useEffect(() => {
     (async () => {
       setInitializing(true);

@@ -226,7 +226,10 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
     setToast({ visible: true, message, type });
   };
 
-  // Persistence logic
+  // --- Local Persistence ---
+  /**
+   * Loads previously generated podcasts from the device's local AsyncStorage.
+   */
   const loadPodcasts = async () => {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
@@ -316,7 +319,13 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
     }
   }, [selectedVoice]);
 
-  // Handle current sentence index changes (Auto-scroll & Chaining)
+  // --- Automatic Text-To-Speech Chaining & Scroll Sync ---
+  /**
+   * Monitors the currently playing sentence index.
+   * - Instructs the TTS engine to read the specific string.
+   * - Automatically scrolls the UI transcript to keep the active sentence centered
+   *   based on the pre-calculated layout data stored in `sentenceLayouts`.
+   */
   useEffect(() => {
     if (currentSentenceIndex >= 0 && featured?.sentences && isPlaying && !isPaused) {
       // Precise centering using tracked layout data
