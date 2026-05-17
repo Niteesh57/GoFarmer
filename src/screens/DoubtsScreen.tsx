@@ -247,8 +247,6 @@ export default function DoubtsScreen({ llmComplete, isLlmReady, lm }: DoubtsScre
       let contentLangStr = 'English';
       if (savedLang) {
         contentLangStr = savedLang.replace(/[^\w\s]/g, '').trim();
-      } else {
-        contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
       }
 
       const ttsCode = getLangCode(contentLangStr);

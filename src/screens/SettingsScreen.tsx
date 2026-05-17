@@ -258,18 +258,8 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
     }
   }, []);
   const checkModelFile = useCallback(async () => {
-    // Check Gemma 4
-    setModels(prev => prev.map(m => {
-      if (m.id === 'gemma-4-e2b-it' && isModelReady) {
-        return { ...m, status: 'downloaded', offline: true };
-      }
-      return m;
-    }));
-
-    // Consistent Check for all models
+    // Consistent Check for all models using the centralized ModelService function
     for (const model of MODELS) {
-      if (model.id === 'gemma-4-e2b-it') continue; 
-
       try {
         const exists = await ModelService.modelExists(model.id);
         
@@ -282,7 +272,7 @@ export default function SettingsScreen({ isModelReady }: SettingsScreenProps) {
         console.log(`Failed to check existence for ${model.id}:`, e);
       }
     }
-  }, [isModelReady]);
+  }, []);
 
   const checkRagFile = useCallback(async () => {
     try {

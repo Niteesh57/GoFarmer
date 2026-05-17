@@ -115,7 +115,34 @@ export const ModelService = {
   async modelExists(modelId: string): Promise<boolean> {
     const q = 'int4';
     const modelName = `${modelId}-${q}`;
-    return await CactusFileSystem.modelExists(modelName);
+    
+    // 0. Check for partial zip file which indicates an incomplete/corrupted download
+    try {
+      const potentialZipPath = `/data/local/tmp/${modelName}.zip`;
+      const zipExists = await CactusFileSystem.fileExists(potentialZipPath);
+      if (zipExists) {
+        return false; // Still downloading, corrupted, or failed to unzip
+      }
+    } catch {
+      // Ignore
+    }
+
+    // 1. Check standard app sandbox path
+    const sandboxExists = await CactusFileSystem.modelExists(modelName);
+    if (sandboxExists) return true;
+
+    // 2. Check Android global /data/local/tmp fallback path
+    try {
+      const fallbackExists = await CactusFileSystem.fileExists(`/data/local/tmp/${modelId}`);
+      if (fallbackExists) return true;
+
+      const fallbackGgufExists = await CactusFileSystem.fileExists(`/data/local/tmp/${modelId}.gguf`);
+      if (fallbackGgufExists) return true;
+    } catch {
+      // Ignore errors for other platforms or permission restrictions
+    }
+
+    return false;
   },
 
   /**

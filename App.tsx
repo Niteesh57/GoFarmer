@@ -24,7 +24,7 @@ import {
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CactusLM, type CactusLMMessage, type CactusLMTool } from 'cactus-react-native';
+import { CactusLM, type CactusLMMessage, type CactusLMTool, type CactusLMCompleteOptions } from 'cactus-react-native';
 import i18n from 'i18next';
 
 // ── Screens ──────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ const SYSTEM_PROMPT_WEATHER =
 
 const SYSTEM_PROMPT_DOUBTS_WEATHER = `You are a professional agricultural expert specializing in crop management and soil sustainability. Analyze the provided [Current Weather Context] and {WEATHER_DATA} meticulously. Your objective is to deliver precise, actionable advice tailored to these specific conditions. It is absolutely mandatory that your final response consists of exactly between fifty and seventy words. Ensure every single word adds significant value to the farmer's decision-making process.`;
 
-const SYSTEM_PROMPT_DOUBTS_GENERAL = `As a senior agricultural advisor, your task is to provide comprehensive and practical guidance to farmers regarding their daily operations. Drawing from your vast knowledge of sustainable farming and pest control, outline the exact steps a farmer must take to succeed. Your response must be strictly limited to a length between fifty and seventy words. Focus on being direct, helpful, and technically accurate in your professional recommendation.`;
+const SYSTEM_PROMPT_DOUBTS_GENERAL = `As a senior agricultural advisor, your task is to provide comprehensive and practical guidance to farmers regarding their daily operations. Drawing from your vast knowledge of sustainable farming and pest control, outline the exact steps a farmer must take to succeed. Focus on being direct, helpful, and technically accurate. MANDATORY RULE: If the user query is a voice/audio query, you MUST start your response by displaying exactly what question you heard the user ask, formatted in their language (e.g., 'You asked: [detected query text]'). Then, provide your expert advisory response below it. Keep your overall response concise and limited in length.`;
 
 const SYSTEM_PROMPT_RADIO =
   'You are a professional Agricultural Advisor. Create practical, step-by-step farming guides. ' +
@@ -89,6 +89,47 @@ import DeviceInfo from 'react-native-device-info';
 
 // Global variable to hold the lm instance after dynamic creation
 let lm: CactusLM;
+
+/**
+ * Returns customized, tier-based CactusLM completion parameters dynamically scaled
+ * to target device hardware specs (free RAM):
+ * 1. Low Tier (3GB to 5GB): Safe memory allocations, lower tokens, strict factual output.
+ * 2. Medium Tier (5GB to 8GB): Standard standard context, balanced deterministic metrics.
+ * 3. High Tier (8GB+): Rich contextual capacity, longer tokens, and maximum creative potential.
+ */
+const getDynamicOptions = (
+  freeRamGB: number,
+  mode: 'factual' | 'creative'
+): CactusLMCompleteOptions => {
+  if (freeRamGB < 5) {
+    // ─── Low Tier: 3GB to 5GB (Absolute Stability / Strict Control) ───
+    return {
+      maxTokens: 256,
+      temperature: 0.1,
+      topP: 0.8,
+      topK: 30,
+      enableThinking: false,
+    };
+  } else if (freeRamGB < 8) {
+    // ─── Medium Tier: 5GB to 8GB (Balanced Settings) ───
+    return {
+      maxTokens: mode === 'creative' ? 600 : 512,
+      temperature: mode === 'creative' ? 0.6 : 0.1,
+      topP: 0.9,
+      topK: 40,
+      enableThinking: false,
+    };
+  } else {
+    // ─── High Tier: 8GB+ (Maximum Power & Creativity) ───
+    return {
+      maxTokens: 1024,
+      temperature: mode === 'creative' ? 0.8 : 0.2,
+      topP: 0.95,
+      topK: 50,
+      enableThinking: false,
+    };
+  }
+};
 
 // ── App Flow Type ─────────────────────────────────────────────────────────────
 type AppFlow = 'splash' | 'language' | 'onboarding' | 'main' | 'incompatible';
@@ -120,6 +161,18 @@ function AppContent() {
 
   // Restore language & Load weather data
   useEffect(() => {
+    const checkOnboardingDone = async () => {
+      try {
+        const done = await AsyncStorage.getItem(ONBOARDING_KEY);
+        if (done === 'true') {
+          setFlow('main');
+        }
+      } catch (e) {
+        console.log('Error checking onboarding status:', e);
+      }
+    };
+    checkOnboardingDone();
+
     AsyncStorage.getItem(LANGUAGE_KEY).then(langCode => {
       if (langCode) i18n.changeLanguage(langCode);
     }).catch(() => { });
@@ -166,6 +219,13 @@ function AppContent() {
   // ── Initialize model ───────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
+      const onboardingDone = await AsyncStorage.getItem(ONBOARDING_KEY);
+      if (onboardingDone !== 'true') {
+        // Skip background initialization if onboarding has not been completed
+        setInitializing(false);
+        return;
+      }
+
       setInitializing(true);
       try {
         // 1. Get Real Hardware Specs
@@ -207,20 +267,6 @@ function AppContent() {
           model: MODEL_NAME,
           corpusDir: CORPUS_PATH,
           options: { quantization: 'int4' },
-          quantize: true,
-          use_gpu: true,
-          gpu_device: 0,
-          offload_kqv: true,
-          offload_all: freeRamGB > 6,
-          flash_attn: true,
-          n_threads: freeRamGB > 10 ? 8 : Math.min(5, cores),
-          n_cores_physical: freeRamGB > 10 ? 8 : Math.min(5, cores),
-          cpu_affinity: freeRamGB > 10 ? false : true,
-          n_context: freeRamGB >= 8 ? 2000 : (freeRamGB >= 5 ? 1024 : 512),
-          kv_cache_quantize: true,
-          kv_cache_type: 'int4',
-          use_mmap: true,
-          use_pinned_memory: true,
         });
 
         console.log('[AI] Initializing model:', MODEL_NAME);
@@ -252,11 +298,16 @@ function AppContent() {
                   text: 'Repair & Re-download',
                   onPress: async () => {
                     await ModelService.deleteModel(MODEL_NAME);
+                    await AsyncStorage.removeItem(ONBOARDING_KEY);
                     setFlow('onboarding'); // Redirect to onboarding to trigger download
                   }
                 }
               ]
             );
+          } else {
+            console.log('[AI] Model files are missing completely. Wiping all AsyncStorage keys for a fresh install.');
+            await AsyncStorage.clear();
+            setFlow('onboarding');
           }
         }
       } finally {
@@ -357,13 +408,17 @@ function AppContent() {
     if (!(await checkFreeRamBeforeInference())) return '';
     setIsGenerating(true);
     try {
+      const usedMem = await DeviceInfo.getUsedMemory();
+      const totalMem = await DeviceInfo.getTotalMemory();
+      const freeRamGB = (totalMem - usedMem) / (1024 * 1024 * 1024);
+
       const result = await lm.complete({
         messages: [
           { role: 'system', content: systemPrompt || SYSTEM_PROMPT_WEATHER },
           { role: 'user', content: prompt },
         ],
         audio: audioData,
-        options: { temperature: 0.4, maxTokens: 512, enableThinking: false },
+        options: getDynamicOptions(freeRamGB, 'factual'),
         onToken,
       });
       return result.response;
@@ -399,8 +454,34 @@ function AppContent() {
         systemPrompt = SYSTEM_PROMPT_DOUBTS_WEATHER.replace('{WEATHER_DATA}', weatherData);
       }
 
+      // Fetch saved language settings to construct the STRICT language rule
+      const savedLang = await AsyncStorage.getItem('@content_lang');
+      let contentLangStr = 'English';
+      if (savedLang) {
+        contentLangStr = savedLang.replace(/[^\w\s]/g, '').trim();
+      }
+
+      const isEnglish = contentLangStr.toLowerCase() === 'english';
+      const fullSystemPrompt = isEnglish
+        ? `${systemPrompt}\n\nSTRICT RULE: You MUST answer ENTIRELY in English. DO NOT use any other languages. DO NOT use markdown symbols.`
+        : `${systemPrompt}\n\nSTRICT RULE: You MUST answer ENTIRELY in the following language: ${contentLangStr}, generating ONLY native ${contentLangStr} words written strictly in the native script of ${contentLangStr}. NO English alphabet transliteration. DO NOT use markdown symbols.`;
+
+      // ── CRITICAL CONDITIONAL ROUTING ──────────────────────────────────────────
+      // For General mode voice queries, use streamAudioVoiceResponse as explicitly requested.
+      // This routes voice recording buffers directly to the audio processing service.
+      if (aiMode === 'general' && audioData) {
+        const responseText = await streamAudioVoiceResponse(
+          fullSystemPrompt,
+          audioData,
+          onToken || (() => {}),
+          lm
+        );
+        return (responseText || '').trim();
+      }
+
+      // Otherwise, use the standard completion code for Weather, Vision, and Text queries.
       const messages: CactusLMMessage[] = [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: fullSystemPrompt },
         { role: 'user', content: prompt },
       ];
 
@@ -408,10 +489,14 @@ function AppContent() {
         (messages[1] as any).images = [imagePath];
       }
 
+      const usedMem = await DeviceInfo.getUsedMemory();
+      const totalMem = await DeviceInfo.getTotalMemory();
+      const freeRamGB = (totalMem - usedMem) / (1024 * 1024 * 1024);
+
       const result = await lm.complete({
         messages,
         audio: audioData,
-        options: { temperature: 0.1, maxTokens: 512, topP: 0.9, topK: 40 },
+        options: getDynamicOptions(freeRamGB, 'factual'),
         onToken,
       });
 
@@ -475,7 +560,10 @@ function AppContent() {
 
       if (audioData) {
         const baseSystemPrompt = `You are an Expert Agricultural Advisor. Generate an educational, highly practical, and helpful advisory podcast script in a ${style.toLowerCase()} style answering the farmer's audio query.`;
-        const fullSystemPrompt = `${baseSystemPrompt}\n\nSTRICT RULE: You MUST answer ENTIRELY in the following language: ${targetLangStr}, generating ONLY native ${targetLangStr} words written strictly in the native script of ${targetLangStr} (e.g., Telugu script for Telugu). NO English alphabet transliteration. DO NOT use markdown symbols.`;
+        const isEnglishRadio = targetLangStr.toLowerCase() === 'english';
+        const fullSystemPrompt = isEnglishRadio
+          ? `${baseSystemPrompt}\n\nSTRICT RULE: You MUST answer ENTIRELY in English. DO NOT use any other languages. DO NOT use markdown symbols.`
+          : `${baseSystemPrompt}\n\nSTRICT RULE: You MUST answer ENTIRELY in the following language: ${targetLangStr}, generating ONLY native ${targetLangStr} words written strictly in the native script of ${targetLangStr}. NO English alphabet transliteration. DO NOT use markdown symbols.`;
 
         rawResponseText = await streamAudioVoiceResponse(
           fullSystemPrompt,
@@ -484,25 +572,33 @@ function AppContent() {
           lm
         );
       } else {
+        const isEnglishRadioText = targetLangStr.toLowerCase() === 'english';
+        const languageRules = isEnglishRadioText
+          ? `- USE ONLY PLAIN TEXT AND NUMBERS. NO MARKDOWN (no #, *, -, etc.).\n- WRITE ENTIRELY IN ENGLISH. DO NOT USE ANY OTHER LANGUAGE.\n`
+          : `- USE ONLY PLAIN TEXT AND NUMBERS. NO MARKDOWN (no #, *, -, etc.).\n- USE ONLY THE NATIVE SCRIPT of the language (${targetLangStr} script). NO transliteration.\n`;
+          
         const prompt =
-          `You are a professional agricultural advisor. Generate a practical ${style.toLowerCase()} farming guide about "${topic}" for Indian farmers.\n` +
+          `You are a professional agricultural advisor. Generate a practical ${style.toLowerCase()} farming guide about "${topic}" for farmers.\n` +
           `Language: ${targetLangStr}\n` +
           `CRITICAL REQUIREMENTS:\n` +
-          `- USE ONLY PLAIN TEXT AND NUMBERS. NO MARKDOWN (no #, *, -, etc.).\n` +
-          `- USE ONLY THE NATIVE SCRIPT of the language (${targetLangStr} script for ${targetLangStr}). NO transliteration.\n` +
+          languageRules +
           `- Use practical examples to help the farmer understand the concepts clearly.\n` +
           `- Keep it concise and conversational.\n` +
           `- Start with a warm introduction.\n` +
           `- Provide actionable advice.\n` +
           `- End with a motivational close.\n` +
-          `Generate the full script now (NATIVE SCRIPT ONLY, NO MARKDOWN):`;
+          `Generate the full script now:`;
+
+        const usedMem = await DeviceInfo.getUsedMemory();
+        const totalMem = await DeviceInfo.getTotalMemory();
+        const freeRamGB = (totalMem - usedMem) / (1024 * 1024 * 1024);
 
         const response = await lm.complete({
           messages: [
             { role: 'system', content: SYSTEM_PROMPT_RADIO },
             { role: 'user', content: prompt } as any,
           ],
-          options: { temperature: 0.7, maxTokens: 600, topP: 0.9, topK: 40 },
+          options: getDynamicOptions(freeRamGB, 'creative'),
           onToken: handleRadioToken,
         });
         rawResponseText = response.response;
@@ -581,12 +677,16 @@ function AppContent() {
     if (!(await checkFreeRamBeforeInference())) return '';
     setIsGenerating(true);
     try {
+      const usedMem = await DeviceInfo.getUsedMemory();
+      const totalMem = await DeviceInfo.getTotalMemory();
+      const freeRamGB = (totalMem - usedMem) / (1024 * 1024 * 1024);
+
       const result = await lm.complete({
         messages: [
           { role: 'system', content: SYSTEM_PROMPT_RADIO },
           { role: 'user', content: prompt },
         ],
-        options: { temperature: 0.7, maxTokens: 600, topP: 0.9, topK: 40 },
+        options: getDynamicOptions(freeRamGB, 'creative'),
         onToken,
       });
       return result.response;
@@ -625,16 +725,13 @@ function AppContent() {
         { role: 'user', content: prompt, images: [imagePath] },
       ];
 
+      const usedMem = await DeviceInfo.getUsedMemory();
+      const totalMem = await DeviceInfo.getTotalMemory();
+      const freeRamGB = (totalMem - usedMem) / (1024 * 1024 * 1024);
+
       const result = await lm.complete({
         messages,
-        options: {
-          temperature: 0.1,
-          maxTokens: 512,
-          enableThinking: false,
-          enableRag: true,
-          topP: 0.9,
-          topK: 40,
-        },
+        options: getDynamicOptions(freeRamGB, 'factual'),
         onToken: callbacks.onToken,
       });
 

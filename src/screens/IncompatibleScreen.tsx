@@ -71,14 +71,14 @@ const styles = StyleSheet.create({
   },
   icon: { fontSize: 50 },
   title: {
-    ...Typography.headlineMedium,
+    ...Typography.headlineMd,
     color: Colors.onSurface,
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: Spacing.md,
   },
   description: {
-    ...Typography.bodyLarge,
+    ...Typography.bodyLg,
     color: Colors.onSurfaceVariant,
     textAlign: 'center',
     marginBottom: Spacing.xxl,
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xl,
   },
   detailsTitle: {
-    ...Typography.titleSmall,
+    ...Typography.titleSm,
     color: Colors.onSurface,
     fontWeight: '700',
     marginBottom: Spacing.md,
@@ -101,8 +101,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: Spacing.xs,
   },
-  specLabel: { ...Typography.bodyMedium, color: Colors.onSurfaceVariant },
-  specValue: { ...Typography.bodyMedium, color: Colors.onSurface, fontWeight: '600' },
+  specLabel: { ...Typography.bodyMd, color: Colors.onSurfaceVariant },
+  specValue: { ...Typography.bodyMd, color: Colors.onSurface, fontWeight: '600' },
   errorBox: {
     padding: Spacing.md,
     backgroundColor: Colors.errorContainer + '33',
@@ -113,13 +113,13 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   errorText: {
-    ...Typography.bodySmall,
+    ...Typography.bodySm,
     color: Colors.error,
     textAlign: 'center',
     fontWeight: '600',
   },
   footerText: {
-    ...Typography.bodyMedium,
+    ...Typography.bodyMd,
     color: Colors.onSurfaceVariant,
     textAlign: 'center',
     fontStyle: 'italic',

@@ -130,13 +130,22 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
       </View>
 
       {!isDownloading ? (
-        <TouchableOpacity 
-          style={[styles.primaryBtn, !isConnected && styles.primaryBtnDisabled]} 
-          onPress={startDownload}
-          disabled={!isConnected}
-        >
-          <Text style={styles.primaryBtnText}>{t('onboarding.start_download')}</Text>
-        </TouchableOpacity>
+        downloadComplete ? (
+          <TouchableOpacity 
+            style={styles.primaryBtn} 
+            onPress={() => setStep('setup')}
+          >
+            <Text style={styles.primaryBtnText}>{t('common.continue', 'Continue')}</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={[styles.primaryBtn, !isConnected && styles.primaryBtnDisabled]} 
+            onPress={startDownload}
+            disabled={!isConnected}
+          >
+            <Text style={styles.primaryBtnText}>{t('onboarding.start_download')}</Text>
+          </TouchableOpacity>
+        )
       ) : !downloadComplete ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={Colors.primary} />
@@ -212,7 +221,8 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
         <Text style={styles.alertText}>⚠️ {t('onboarding.restart_msg')}</Text>
       </View>
 
-      <TouchableOpacity style={styles.primaryBtn} onPress={() => {
+      <TouchableOpacity style={styles.primaryBtn} onPress={async () => {
+        await AsyncStorage.setItem('@GOFARMER_onboarding_done', 'true');
         onComplete();
         setTimeout(() => BackHandler.exitApp(), 100);
       }}>
@@ -270,7 +280,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   headerSkipText: {
-    ...Typography.labelLarge,
+    ...Typography.labelLg,
     color: Colors.primary,
     fontWeight: '700',
   },
@@ -287,38 +297,38 @@ const styles = StyleSheet.create({
   
   progressContainer: { width: '100%', gap: Spacing.md, marginVertical: Spacing.lg },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  progressLabel: { ...Typography.labelLarge, color: Colors.onSurface },
-  progressPct: { ...Typography.labelLarge, color: Colors.primary, fontWeight: '700' },
+  progressLabel: { ...Typography.labelLg, color: Colors.onSurface },
+  progressPct: { ...Typography.labelLg, color: Colors.primary, fontWeight: '700' },
   progressTrack: { height: 10, backgroundColor: Colors.surfaceContainerHighest, borderRadius: Radius.full, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: Radius.full },
   
   primaryBtn: { width: '100%', height: 56, backgroundColor: Colors.primary, borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center', elevation: 4, marginTop: Spacing.md },
   primaryBtnDisabled: { opacity: 0.5 },
-  primaryBtnText: { ...Typography.titleMedium, color: Colors.onPrimary, fontWeight: '700' },
+  primaryBtnText: { ...Typography.titleMd, color: Colors.onPrimary, fontWeight: '700' },
   
   skipBtn: { padding: 12, marginTop: Spacing.sm },
-  skipBtnText: { ...Typography.labelLarge, color: Colors.onSurfaceVariant },
+  skipBtnText: { ...Typography.labelLg, color: Colors.onSurfaceVariant },
   
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: Spacing.md },
-  loadingText: { ...Typography.bodyMedium, color: Colors.onSurfaceVariant },
+  loadingText: { ...Typography.bodyMd, color: Colors.onSurfaceVariant },
 
   questionCard: { width: '100%', padding: Spacing.lg, backgroundColor: Colors.surfaceContainerLow, borderRadius: Radius.lg, gap: Spacing.md, marginTop: Spacing.md },
-  questionText: { ...Typography.titleMedium, color: Colors.onSurface, fontWeight: '600' },
+  questionText: { ...Typography.titleMd, color: Colors.onSurface, fontWeight: '600' },
   choiceRow: { flexDirection: 'row', gap: Spacing.md },
   choiceBtn: { flex: 1, height: 48, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.outline, alignItems: 'center', justifyContent: 'center' },
   choiceBtnActive: { backgroundColor: Colors.primaryContainer, borderColor: Colors.primary },
-  choiceBtnText: { ...Typography.titleSmall, color: Colors.onSurface },
+  choiceBtnText: { ...Typography.titleSm, color: Colors.onSurface },
   choiceBtnTextActive: { color: Colors.onPrimaryContainer, fontWeight: '700' },
 
   cropSelector: { width: '100%', gap: Spacing.sm, marginTop: Spacing.md },
-  subLabel: { ...Typography.labelMedium, color: Colors.onSurfaceVariant },
+  subLabel: { ...Typography.labelMd, color: Colors.onSurfaceVariant },
   cropChips: { gap: Spacing.sm },
   cropChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radius.full, backgroundColor: Colors.surfaceContainerHigh },
   cropChipActive: { backgroundColor: Colors.primary },
-  cropChipText: { ...Typography.labelLarge, color: Colors.onSurface },
+  cropChipText: { ...Typography.labelLg, color: Colors.onSurface },
   cropChipTextActive: { color: Colors.onPrimary, fontWeight: '700' },
 
   alertCard: { width: '100%', padding: Spacing.lg, backgroundColor: Colors.errorContainer + '22', borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.error + '44', marginVertical: Spacing.md },
-  alertText: { ...Typography.bodyMedium, color: Colors.error, textAlign: 'center', lineHeight: 22 },
+  alertText: { ...Typography.bodyMd, color: Colors.error, textAlign: 'center', lineHeight: 22 },
   finishBtn: { backgroundColor: Colors.primary },
 });

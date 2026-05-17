@@ -224,7 +224,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
     const picker = source === 'camera' ? require('react-native-image-picker').launchCamera : launchImageLibrary;
 
-    picker({ mediaType: 'photo', quality: 0.8, maxWidth: 800, maxHeight: 800 }, async res => {
+    picker({ mediaType: 'photo', quality: 0.8, maxWidth: 800, maxHeight: 800 }, async (res: any) => {
       const asset = res.assets?.[0];
       if (!asset?.uri) return;
 
@@ -236,22 +236,17 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
         let contentLangStr = 'English';
         if (savedLang) {
           contentLangStr = savedLang.replace(/[^\w\s]/g, '').trim();
-        } else {
-          try {
-            if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
-              contentLangStr = new Intl.DisplayNames(['en'], { type: 'language' }).of(i18n.language) || 'English';
-            } else {
-              contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
-            }
-          } catch (e) {
-            contentLangStr = i18n.language === 'hi' ? 'Hindi' : 'English';
-          }
         }
 
+        const isEnglishVision = contentLangStr.toLowerCase() === 'english';
+        const languageRule = isEnglishVision
+          ? 'CRITICAL REQUIREMENT: All output fields (disease, composition, management, recommendations) MUST BE generated entirely in English. '
+          : `CRITICAL REQUIREMENT: All output fields (disease, composition, management, recommendations) MUST BE generated entirely in the target language: ${contentLangStr}, written strictly using the native script of ${contentLangStr}. `;
+          
         const prompt =
           'You are an expert plant pathologist. Analyze the image and provide a diagnosis. ' +
           'Specifically include the "Chemical Treatment" as "composition" and the "Management" steps as "management". ' +
-          `CRITICAL REQUIREMENT: All output fields (disease, composition, management, recommendations) MUST BE generated entirely in the target language: ${contentLangStr}, written strictly using the native script of ${contentLangStr}. ` +
+          languageRule +
           'Respond ONLY in this JSON format:\n' +
           '{"status":"healthy|diseased|warning","disease":"<disease name in target language or none>","confidence":<0-100>,"severity":<0-100>,"composition":"<initial chemical treatment in target language>","management":"<management steps in target language>","recommendations":["<tip1>","<tip2>","<tip3>"]}\n';
 
@@ -517,9 +512,9 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
       {/* Scanning progress modal */}
       <Modal visible={scanning} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.scanningModal, { alignItems: 'center', justifyContent: 'center', padding: Spacing.xl }]}>
+          <View style={[{ alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, backgroundColor: Colors.background, borderRadius: Radius.lg }]}>
             <ActivityIndicator size="large" color={Colors.primary} style={{ marginBottom: Spacing.md }} />
-            <Text style={styles.scanningTitle}>{t('aieye.analyzing_symptoms')}</Text>
+            <Text style={styles.scansTitle}>{t('aieye.analyzing_symptoms')}</Text>
           </View>
         </View>
       </Modal>
@@ -528,8 +523,8 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
       <Modal visible={historyVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.resultSheet, { height: '80%' }]}>
-             <View style={styles.scanningHeader}>
-               <Text style={styles.scanningTitle}>{t('common.history')}</Text>
+             <View style={styles.scansHeader}>
+               <Text style={styles.scansTitle}>{t('common.history')}</Text>
                <TouchableOpacity style={{marginLeft: 'auto'}} onPress={() => setHistoryVisible(false)}>
                  <Text style={{fontSize: 24, color: Colors.onSurfaceVariant}}>×</Text>
                </TouchableOpacity>
@@ -667,8 +662,8 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
       <Modal visible={!!selectedCluster} transparent animationType="fade" onRequestClose={() => setSelectedCluster(null)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.resultSheet, { height: '60%' }]}>
-            <View style={styles.scanningHeader}>
-              <Text style={styles.scanningTitle}>{t('aieye.select_scan')}</Text>
+            <View style={styles.scansHeader}>
+              <Text style={styles.scansTitle}>{t('aieye.select_scan')}</Text>
               <TouchableOpacity style={{marginLeft: 'auto'}} onPress={() => setSelectedCluster(null)}>
                 <Text style={{fontSize: 24, color: Colors.onSurfaceVariant}}>×</Text>
               </TouchableOpacity>

@@ -162,7 +162,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
           setSelectedVoice(vs[0].id);
         }
         
-        // Language init: Pre-select based on saved preference or app locale
+        // Language init: Pre-select based on saved preference, strictly fall back to English if not found
         const savedLang = await AsyncStorage.getItem('@content_lang');
         if (savedLang) {
           const cleanSaved = savedLang.replace(/[^\w\s]/g, '').trim().toLowerCase();
@@ -170,10 +170,6 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
             l.label.toLowerCase().includes(cleanSaved) || 
             cleanSaved.includes(l.label.toLowerCase().replace(/[^\w\s]/g, '').trim())
           );
-          if (found) setLanguage(found);
-        } else {
-          const appLangCode = i18n.language;
-          const found = LANGUAGES.find(l => l.code.startsWith(appLangCode));
           if (found) setLanguage(found);
         }
       } catch (e) {
@@ -200,6 +196,13 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
       showToast('Generating podcast from voice...', 'info');
       
       try {
+        // ─── Local Podcast Generation via Voice Input ──────────────────────────
+        // 1. PCM Audio Processing: We pass the direct microphone audio buffer (16kHz PCM)
+        //    into the local speech-to-text pipeline.
+        // 2. Agricultural Script Synthesis: The Gemma 4 model utilizes the transcribed text
+        //    as contextual seeding to generate a detailed agronomic advisory script.
+        // 3. Persistent Podcast Item Construction: When synthesis completes, the new script is
+        //    split into readable sentences, saved to AsyncStorage, and loaded into the player.
         await startRadioGeneration(
           topic || 'Podcast from Voice Input', 
           language, 
@@ -371,7 +374,10 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
         }
       }
     });
-    return () => l.remove();
+    return () => {
+      // @ts-ignore
+      l.remove();
+    };
   }, [isPlaying, isPaused, featured, currentSentenceIndex]);
 
   const splitIntoSentences = (text: string) => {
@@ -408,6 +414,12 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
       return;
     }
 
+    // ─── Sentence-Level Auto-Scroll TTS Player ─────────────────────────────────
+    // 1. Audio Reset: We purge any currently queued vocal synthesis blocks from the TTS buffer.
+    // 2. State Alignment: We select the active podcast, set the playback cursor back to index 0,
+    //    and configure TTS localization variables (default language & regional locale voices).
+    // 3. Dynamic Voice Mapping: Checks matching system-provided TTS voices for the target language
+    //    and binds the highest-priority native speaker engine.
     Tts.stop();
     setPlayingId(podcast.id);
     setFeatured(podcast);
@@ -822,7 +834,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryContainer + '30',
   },
   transcriptText: { 
-    ...Typography.bodyMedium, 
+    ...Typography.bodyMd, 
     color: Colors.onSurfaceVariant, 
     lineHeight: 24, 
     fontSize: 16,
@@ -854,8 +866,8 @@ const styles = StyleSheet.create({
   voiceBtnText: { ...Typography.labelMd, color: Colors.onSecondaryContainer },
 
   emptyState: { alignItems: 'center', justifyContent: 'center', padding: 40, backgroundColor: Colors.surfaceContainerLowest, borderRadius: Radius.lg, borderStyle: 'dashed', borderWidth: 2, borderColor: Colors.outlineVariant },
-  emptyText: { ...Typography.titleLarge, color: Colors.onSurfaceVariant, marginBottom: 8 },
-  emptySubText: { ...Typography.bodyMedium, color: Colors.outline },
+  emptyText: { ...Typography.titleLg, color: Colors.onSurfaceVariant, marginBottom: 8 },
+  emptySubText: { ...Typography.bodyMd, color: Colors.outline },
 
   sectionCard: {
     backgroundColor: Colors.surfaceContainerLowest,
@@ -866,10 +878,10 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     elevation: 2,
   },
-  sectionTitle: { ...Typography.titleMedium, color: Colors.onSurface, fontWeight: '700', marginBottom: 4 },
+  sectionTitle: { ...Typography.titleMd, color: Colors.onSurface, fontWeight: '700', marginBottom: 4 },
 
   selectGroup: { gap: 4 },
-  selectLabel: { ...Typography.labelMedium, color: Colors.onSurfaceVariant },
+  selectLabel: { ...Typography.labelMd, color: Colors.onSurfaceVariant },
   selectBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     borderWidth: 1, borderColor: Colors.outlineVariant,
@@ -877,19 +889,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md, paddingVertical: 12,
     backgroundColor: Colors.surfaceContainerLow,
   },
-  selectValue: { ...Typography.bodyLarge, color: Colors.onSurface },
-  selectArrow: { ...Typography.labelSmall, color: Colors.onSurfaceVariant },
+  selectValue: { ...Typography.bodyLg, color: Colors.onSurface },
+  selectArrow: { ...Typography.labelSm, color: Colors.onSurfaceVariant },
 
   disabledForm: { opacity: 0.5 },
 
   genProgress: { gap: Spacing.sm, alignItems: 'center', width: '100%' },
   progressHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
   tokenBadgeContainer: { backgroundColor: Colors.primaryContainer, paddingHorizontal: 10, paddingVertical: 2, borderRadius: Radius.full },
-  tokenBadgeText: { ...Typography.labelSmall, color: Colors.onPrimaryContainer, fontWeight: 'bold' },
-  genStep: { ...Typography.bodyMedium, color: Colors.onSurfaceVariant },
+  tokenBadgeText: { ...Typography.labelSm, color: Colors.onPrimaryContainer, fontWeight: 'bold' },
+  genStep: { ...Typography.bodyMd, color: Colors.onSurfaceVariant },
   genTrack: { width: '100%', height: 8, backgroundColor: Colors.surfaceContainerHighest, borderRadius: Radius.full, overflow: 'hidden' },
   genFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: Radius.full },
-  genPct: { ...Typography.titleMedium, color: Colors.primary, fontWeight: '700' },
+  genPct: { ...Typography.titleMd, color: Colors.primary, fontWeight: '700' },
 
   generateBtn: {
     height: 56, backgroundColor: Colors.primary, borderRadius: Radius.lg,
@@ -897,7 +909,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   generateBtnDisabled: { opacity: 0.5 },
-  generateBtnText: { ...Typography.labelLarge, color: Colors.onPrimary, fontWeight: '700', fontSize: 16 },
+  generateBtnText: { ...Typography.labelLg, color: Colors.onPrimary, fontWeight: '700', fontSize: 16 },
 
   podcastCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -910,8 +922,8 @@ const styles = StyleSheet.create({
   podcastLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flex: 1 },
   podcastIcon: { fontSize: 28 },
   podcastInfo: { flex: 1 },
-  podcastTitle: { ...Typography.labelMedium, color: Colors.onSurface, fontWeight: '700' },
-  podcastMeta: { ...Typography.labelSmall, color: Colors.onSurfaceVariant, marginTop: 2 },
+  podcastTitle: { ...Typography.labelMd, color: Colors.onSurface, fontWeight: '700' },
+  podcastMeta: { ...Typography.labelSm, color: Colors.onSurfaceVariant, marginTop: 2 },
   podcastActions: { flexDirection: 'row', gap: 4 },
   podcastActionBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18 },
   podcastActionIcon: { fontSize: 18 },
@@ -920,7 +932,7 @@ const styles = StyleSheet.create({
   modeToggle: { flexDirection: 'row', backgroundColor: Colors.surfaceContainerHigh, borderRadius: 20, padding: 2 },
   modeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 18 },
   modeBtnActive: { backgroundColor: '#fff', elevation: 2 },
-  modeBtnText: { ...Typography.labelSmall, color: Colors.onSurfaceVariant },
+  modeBtnText: { ...Typography.labelSm, color: Colors.onSurfaceVariant },
   modeBtnTextActive: { color: Colors.primary, fontWeight: '700' },
 
   voiceInputArea: { alignItems: 'center', gap: 16, marginVertical: 10 },
@@ -929,7 +941,7 @@ const styles = StyleSheet.create({
   minimalMicBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.outlineVariant },
   minimalMicBtnActive: { backgroundColor: Colors.error + '22', borderColor: Colors.error },
   whiteCircle: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3 },
-  recordingStatus: { ...Typography.labelSmall, color: Colors.error, fontWeight: '900', letterSpacing: 1 },
+  recordingStatus: { ...Typography.labelSm, color: Colors.error, fontWeight: '900', letterSpacing: 1 },
   
   customTopicContainer: { marginTop: 4 },
   customTopicInput: {
@@ -939,7 +951,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: 10,
-    ...Typography.bodyLarge,
+    ...Typography.bodyLg,
     color: Colors.onSurface,
     minHeight: 48,
     textAlignVertical: 'top',
@@ -961,10 +973,10 @@ const styles = StyleSheet.create({
     padding: Spacing.lg, maxHeight: '60%',
   },
   modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: Colors.outlineVariant, alignSelf: 'center', marginBottom: Spacing.md },
-  pickerTitle: { ...Typography.titleMedium, color: Colors.onSurface, marginBottom: Spacing.md, textTransform: 'capitalize' },
+  pickerTitle: { ...Typography.titleMd, color: Colors.onSurface, marginBottom: Spacing.md, textTransform: 'capitalize' },
   pickerOption: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.outlineVariant,
   },
-  pickerOptionText: { ...Typography.bodyLarge, color: Colors.onSurface },
+  pickerOptionText: { ...Typography.bodyLg, color: Colors.onSurface },
 });

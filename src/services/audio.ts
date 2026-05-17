@@ -1,4 +1,6 @@
 import { CactusLM, type CactusLMMessage } from 'cactus-react-native';
+import DeviceInfo from 'react-native-device-info';
+import { getDynamicOptions } from '../utils/performance';
 
 /**
  * Streams real-time text generations directly from multimodal PCM audio interactions.
@@ -34,17 +36,15 @@ export const streamAudioVoiceResponse = async (
   ];
 
   try {
+    const usedMem = await DeviceInfo.getUsedMemory();
+    const totalMem = await DeviceInfo.getTotalMemory();
+    const freeRamGB = (totalMem - usedMem) / (1024 * 1024 * 1024);
+
     const result = await lm.complete({
       messages,
       audio: audioChunk,
       onToken,
-      options: {
-        temperature: 0.1,
-        maxTokens: 512,
-        topP: 0.9,
-        topK: 40,
-        enableThinking: false, // Ensure direct output for voice responses
-      }
+      options: getDynamicOptions(freeRamGB, 'factual')
     });
 
     return result.response;

@@ -162,21 +162,6 @@ export default function WeatherScreen({
       if (savedLang) {
         // Remove emojis/flags and extract the language name (e.g., "🇮🇳 Hindi" -> "Hindi")
         contentLangStr = savedLang.replace(/[^\w\s]/g, '').trim();
-      } else {
-        // Comprehensive fallback mapping for i18n codes
-        const langMap: Record<string, string> = {
-          'en': 'English',
-          'hi': 'Hindi',
-          'te': 'Telugu',
-          'kn': 'Kannada',
-          'es': 'Spanish',
-          'fr': 'French',
-          'de': 'German',
-          'zh': 'Chinese',
-          'ja': 'Japanese',
-          'sv': 'Swedish'
-        };
-        contentLangStr = langMap[i18n.language] || 'English';
       }
       
       const isCropSelected = activeCrop && activeCrop !== 'None';
@@ -619,7 +604,7 @@ Respond ENTIRELY in ${contentLangStr}. Use Markdown.`;
           </View>
           <View style={styles.trendChart}>
             <View style={styles.trendBarsContainer}>
-              {dynamicTempTrend.map((t, i) => {
+              {dynamicTempTrend.map((t: any, i: number) => {
                 const high = Math.round(timeseries.temp_max[i]);
                 const low = Math.round(timeseries.temp_min[i]);
                 return (
@@ -773,7 +758,7 @@ const styles = StyleSheet.create({
   forecastTemp: { ...Typography.labelMd, color: Colors.onSurface },
 
   insightHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.sm },
-  insightDateLabel: { ...Typography.labelSmall, color: Colors.onSurfaceVariant, marginTop: -2 },
+  insightDateLabel: { ...Typography.labelSm, color: Colors.onSurfaceVariant, marginTop: -2 },
   insightCropLabel: { ...Typography.labelMd, color: Colors.onSurfaceVariant },
   insightGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.gutter },
   insightCard: {
@@ -813,7 +798,7 @@ const styles = StyleSheet.create({
   
 
   barCol: { flex: 1, alignItems: 'center' },
-  barValueText: { ...Typography.labelSmall, color: Colors.onSurfaceVariant, marginBottom: 4, fontSize: 10 },
+  barValueText: { ...Typography.labelSm, color: Colors.onSurfaceVariant, marginBottom: 4, fontSize: 10 },
   barTrack: {
     height: 80, width: 28,
     backgroundColor: Colors.surfaceContainerHighest,
@@ -830,11 +815,11 @@ const styles = StyleSheet.create({
   soilValue: { ...Typography.titleSm, color: Colors.onSurface, fontWeight: '700' },
 
   updateInlineBtn: { backgroundColor: Colors.errorContainer, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
-  updateInlineText: { ...Typography.labelSmall, color: Colors.onErrorContainer, fontWeight: '700' },
+  updateInlineText: { ...Typography.labelSm, color: Colors.onErrorContainer, fontWeight: '700' },
   staleContainer: { padding: Spacing.lg, alignItems: 'center', gap: Spacing.md },
-  staleText: { ...Typography.bodyMedium, color: Colors.onSurfaceVariant, textAlign: 'center' },
+  staleText: { ...Typography.bodyMd, color: Colors.onSurfaceVariant, textAlign: 'center' },
   bigUpdateBtn: { backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: Radius.full },
-  bigUpdateBtnText: { ...Typography.labelLarge, color: Colors.onPrimary, fontWeight: '700' },
+  bigUpdateBtnText: { ...Typography.labelLg, color: Colors.onPrimary, fontWeight: '700' },
 
   trendChart: {
     height: 120,
