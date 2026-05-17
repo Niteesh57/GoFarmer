@@ -1,3 +1,14 @@
+/**
+ * @file LLMRadioScreen.tsx
+ * @description Local Agricultural Advisory Podcast Generator & Player.
+ * 
+ * Provides an offline podcast experience for farmers:
+ * 1. AI Script Synthesis: Generates educational transcripts and agronomic advisory pieces using the local Gemma 4 model.
+ * 2. Lyric-Style Audio Player: Features interactive, synced sentence-level text tracking (karaoke-style auto-scroll).
+ * 3. Text-to-Speech (TTS) Integration: Automatically schedules and speaks synthesized sentences sequentially.
+ * 4. Multi-language/Multi-voice support: Localizes vocal outputs with custom pitch and tempo adjustments.
+ */
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
@@ -29,12 +40,26 @@ interface PodcastItem {
 }
 
 interface LLMRadioScreenProps {
+  /** Callback triggering LLM completion. */
   llmComplete: (prompt: string) => Promise<string>;
+  
+  /** True if the local gemma-4-e2b-it model binary has loaded successfully. */
   isLlmReady: boolean;
+  
+  /** Current state of podcast script generation process. Includes tokens count tracker. */
   radioGen: { generating: boolean; step: string; pct: number; tokens?: number };
+  
+  /** Triggers the asynchronous creation of a new podcast. */
   startRadioGeneration: (topic: string, lang: { label: string, code: string }, style: string, onDone: (p: PodcastItem) => void, audioData?: number[]) => Promise<void>;
 }
 
+/**
+ * Translates Base64 audio recordings into raw 16kHz Mono PCM channels, conforming to
+ * Offline CactusLM podcast generation inputs.
+ * 
+ * @param {string} b64 Input Base64 encoded audio string stream.
+ * @returns {number[]} Output raw byte representation array.
+ */
 const base64ToPcm = (b64: string): number[] => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   const lookup = new Uint8Array(256);
@@ -226,10 +251,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
     setToast({ visible: true, message, type });
   };
 
-  // --- Local Persistence ---
-  /**
-   * Loads previously generated podcasts from the device's local AsyncStorage.
-   */
+  // Persistence logic
   const loadPodcasts = async () => {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
@@ -319,13 +341,7 @@ export default function LLMRadioScreen({ llmComplete, isLlmReady, radioGen, star
     }
   }, [selectedVoice]);
 
-  // --- Automatic Text-To-Speech Chaining & Scroll Sync ---
-  /**
-   * Monitors the currently playing sentence index.
-   * - Instructs the TTS engine to read the specific string.
-   * - Automatically scrolls the UI transcript to keep the active sentence centered
-   *   based on the pre-calculated layout data stored in `sentenceLayouts`.
-   */
+  // Handle current sentence index changes (Auto-scroll & Chaining)
   useEffect(() => {
     if (currentSentenceIndex >= 0 && featured?.sentences && isPlaying && !isPaused) {
       // Precise centering using tracked layout data

@@ -1,3 +1,17 @@
+/**
+ * @file DoubtsScreen.tsx
+ * @description Voice-First and Text-Based Offline AI Consultant.
+ * 
+ * Implements a multimodal, conversational doubt-clearing interface for farmers:
+ * 1. Dual Mode Consulting (General/Weather): Dynamically shifts expert instructions based on weather
+ *    patterns or agronomic practices, ensuring tailored agricultural advice.
+ * 2. Voice-First Interaction: Native audio transcription utilizing a local 16kHz mono 16-bit PCM channel,
+ *    relayed automatically to the local Gemma 4 inference pipeline.
+ * 3. Text-to-Speech (TTS) Pipeline: Auto-speaks diagnostic output in real-time using sentence-level buffering
+ *    to prevent vocal jitter.
+ * 4. Offline RAG Contexts: Interleaves dynamic retrieved context blocks natively without internet dependency.
+ */
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
@@ -19,12 +33,22 @@ import { CactusLMMessage, CactusLM } from 'cactus-react-native';
 import { OrbAnimation } from '../components/OrbAnimation';
 import { optimizeImageForLLM } from '../utils/imageHelper';
 
+// ─── Component Props ──────────────────────────────────────────────────────────
 interface DoubtsScreenProps {
+  /**
+   * Triggers offline model inference for text & audio inputs.
+   * Supports streaming token responses and custom weather/general contexts.
+   */
   llmComplete: (prompt: string, onToken?: (tok: string) => void, audioData?: number[], imagePath?: string, aiMode?: 'general' | 'weather') => Promise<string>;
+  
+  /** True if the local gemma-4-e2b-it model binary has loaded successfully. */
   isLlmReady: boolean;
+  
+  /** Optional active CactusLM instance for isolated multimodal vision compilation. */
   lm?: CactusLM;
 }
 
+// ─── Expert Instruction Prompts ───────────────────────────────────────────────
 const AGRI_SYSTEM_PROMPT =
   'You are an Agricultural Advisor. Answer the farmer\'s query straight to the point immediately without unnecessary generic context. ' +
   'If there is beneficial rationale (e.g., weather conditions like low rain or sunny skies), provide the full helpful explanation to justify your advice. ' +
@@ -35,7 +59,13 @@ const VISION_SYSTEM_PROMPT =
   'If there is beneficial rationale, provide the full helpful explanation to justify your advice. ' +
   'Use only plain text (no markdown) and the native script of the language.';
 
-
+/**
+ * Converts a Base64-encoded audio chunk stream into standard raw signed 16-bit PCM integer arrays.
+ * Used to translate recorded native voice inputs into format-compliant packages for offline CactusLM.
+ * 
+ * @param {string} b64 Input Base64 encoded audio string stream.
+ * @returns {number[]} Output raw byte representation array.
+ */
 const base64ToPcm = (b64: string): number[] => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   const lookup = new Uint8Array(256);
@@ -133,12 +163,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady, lm }: DoubtsScre
     const options = { sampleRate: 16000, channels: 1, bitsPerSample: 16, audioSource: 1 };
   };
 
-  // --- Voice Transcription & Audio Capture ---
-  /**
-   * Toggles the audio recording state.
-   * On start: Requests OS microphone permissions, clears chunks, and initiates recording.
-   * On stop: Halts recording, processes Base64 to PCM, and triggers the LLM pipeline.
-   */
+  // -- Voice Transcription --
   const toggleRecording = async () => {
     if (isRecording) {
       setIsRecording(false);
@@ -197,13 +222,7 @@ export default function DoubtsScreen({ llmComplete, isLlmReady, lm }: DoubtsScre
     }
   };
 
-  // --- AI Pipeline & Context Generation ---
-  /**
-   * Handles the complete inference pipeline for multimodal and voice inputs.
-   * Processes input strings or PCM audio through the local LLM.
-   * Tracks TTFT (Time To First Token) and Token Generation Speed for performance metrics.
-   * Synchronizes the generated output chunks to the Native TTS engine.
-   */
+  // -- AI Logic --
   const handleNewMessage = async (text?: string, audioData?: number[]) => {
     if (!text && !audioData) return;
     if (!isLlmReady) {

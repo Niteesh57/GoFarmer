@@ -1,3 +1,15 @@
+/**
+ * @file AIEyeScreen.tsx
+ * @description Multimodal Crop Diagnostic Map and AI Analysis Dashboard.
+ * 
+ * This screen provides the "AI Eye" diagnostic scanning experience for farmers:
+ * 1. Plant Pathology Scanner: Analyzes plant stress, leaf anomalies, and diseases offline using Gemma 4.
+ * 2. Anchor-Centric Radial Radar: Visualizes a localized GPS-centric map where the first recorded scan
+ *    acts as the permanent central anchor (50%, 50%), and subsequent scans are dynamically mapped.
+ * 3. Side-by-Side Pin Fanning: Groups and horizontally fans multiple diagnostic pins recorded at the 
+ *    same coordinate to prevent UI overlaps.
+ */
+
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
@@ -12,7 +24,7 @@ import { Toast } from '../components/Toast';
 import { Colors, Typography, Spacing, Radius } from '../theme/theme';
 import { getCurrentLocation } from '../services/InsightsService';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Interfaces & Data Contracts ───────────────────────────────────────────────
 interface ScanResult {
   id: string;
   imagePath: string;
@@ -37,8 +49,12 @@ const MAP_MARKERS = [
   { top: '70%', left: '20%', status: 'warning', label: 'Sector B' },
 ];
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Component Props ──────────────────────────────────────────────────────────
 interface AIEyeScreenProps {
+  /**
+   * Completes a multimodal prompt offline with local Gemma 4 model inference.
+   * Includes custom callbacks for streaming tokens, reasoning traces, and local tool execution.
+   */
   llmComplete: (
     prompt: string,
     imagePath: string,
@@ -61,9 +77,7 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
   const [anchorLocation, setAnchorLocation] = useState<{lat: number, lng: number} | null>(null);
   const [selectedCluster, setSelectedCluster] = useState<ScanResult[] | null>(null);
 
-  // --- Location Tracking & Map Anchoring ---
-  // Calculates real-time distance from the initial anchor point.
-  // Updates the anchor if the user physically moves beyond the renderable radius (~500m).
+  React.useEffect(() => {
     if (anchorLocation && currentLocation) {
       const dist = Math.sqrt(
         Math.pow(currentLocation.lat - anchorLocation.lat, 2) + 
@@ -335,19 +349,15 @@ export default function AIEyeScreen({ llmComplete }: AIEyeScreenProps) {
 
           {/* Anchor-Centric Precision Plotting: The first scan is always the center point (50, 50) */}
           {(() => {
-            // --- Coordinate Normalization ---
             const safeLat = (loc: any): number => Number(loc?.lat ?? loc?.latitude ?? 0);
             const safeLng = (loc: any): number => Number(loc?.lng ?? loc?.longitude ?? 0);
 
-            // Collect ALL locations to determine the relative scale boundaries
+            // Collect ALL locations to determine the relative scale
             const allLocs: any[] = [];
             if (currentLocation) allLocs.push(currentLocation);
             scans.forEach(s => { if (s.rawLocation) allLocs.push(s.rawLocation); });
 
-            /**
-             * Calculates the absolute percentage coordinate (0-100) for a given GPS location
-             * relative to the primary anchor scan, ensuring all points stay within the radar rings.
-             */
+            // Radar center is anchorLocation (the first scan)
             const getPos = (loc: any) => {
               if (!anchorLocation) return { top: 50, left: 50 };
               
